@@ -115,6 +115,25 @@ Check it:
 curl -sS http://127.0.0.1:8321/health
 ```
 
+Upgrade an existing Docker container:
+
+```bash
+git pull --ff-only
+docker build -t liquidstoolap:latest .
+
+docker rm -f liquidstoolap
+docker run -d \
+  --name liquidstoolap \
+  -p 8321:8321 \
+  -v "$PWD/liquid-data:/data" \
+  liquidstoolap:latest
+
+docker exec liquidstoolap liquidstoolap --version
+curl -sS http://127.0.0.1:8321/health
+```
+
+The `docker rm -f` command removes only the container. The database, config, password file, and static token files stay in the mounted `liquid-data` directory. To upgrade to a specific release instead of the latest release, build with `--build-arg LIQUID_STOOLAP_VERSION=0.1.4`.
+
 Stop and remove the container:
 
 ```bash
@@ -381,6 +400,25 @@ docker run -d \
 ```bash
 curl -sS http://127.0.0.1:8321/health
 ```
+
+Обновить существующий Docker container:
+
+```bash
+git pull --ff-only
+docker build -t liquidstoolap:latest .
+
+docker rm -f liquidstoolap
+docker run -d \
+  --name liquidstoolap \
+  -p 8321:8321 \
+  -v "$PWD/liquid-data:/data" \
+  liquidstoolap:latest
+
+docker exec liquidstoolap liquidstoolap --version
+curl -sS http://127.0.0.1:8321/health
+```
+
+Команда `docker rm -f` удаляет только container. База, config, password file и static token files остаются в mounted directory `liquid-data`. Чтобы обновиться на конкретный release, а не на latest release, собирайте с `--build-arg LIQUID_STOOLAP_VERSION=0.1.4`.
 
 Остановить и удалить container:
 
