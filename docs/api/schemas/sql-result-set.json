@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquidstoolap.local/schema/sql-result-set.json",
+  "title": "SqlResultSet",
+  "type": "object",
+  "required": ["kind", "columns", "types", "rows", "row_count"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "result_set"
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "row.json"
+      }
+    },
+    "row_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

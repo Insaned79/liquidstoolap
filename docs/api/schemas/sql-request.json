@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquidstoolap.local/schema/sql-request.json",
+  "title": "SqlRequest",
+  "type": "object",
+  "required": ["sql"],
+  "additionalProperties": false,
+  "properties": {
+    "sql": {
+      "type": "string",
+      "minLength": 1
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      }
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

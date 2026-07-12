@@ -1,0 +1,84 @@
+<script type="text/javascript">
+  RED.nodes.registerType("liquid-stoolap-config", {
+    category: "config",
+    defaults: {
+      name: { value: "" },
+      baseUrl: { value: "http://127.0.0.1:8321", required: true },
+      authMode: { value: "token" },
+      timeoutMs: { value: 30000, validate: RED.validators.number() },
+      verifyTls: { value: true }
+    },
+    credentials: {
+      token: { type: "password" },
+      username: { type: "text" },
+      password: { type: "password" }
+    },
+    label: function () {
+      return this.name || this.baseUrl || "Liquid Stoolap";
+    }
+  });
+
+  RED.nodes.registerType("liquid-stoolap-sql", {
+    category: "storage",
+    color: "#d8eef2",
+    defaults: {
+      name: { value: "" },
+      server: { value: "", type: "liquid-stoolap-config", required: true },
+      sql: { value: "" },
+      timeoutMs: { value: 0, validate: RED.validators.number() }
+    },
+    inputs: 1,
+    outputs: 2,
+    outputLabels: ["success", "error"],
+    icon: "db.svg",
+    label: function () {
+      return this.name || "Liquid Stoolap SQL";
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="liquid-stoolap-config">
+  <div class="form-row">
+    <label for="node-config-input-name">Name</label>
+    <input type="text" id="node-config-input-name">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-baseUrl">Base URL</label>
+    <input type="text" id="node-config-input-baseUrl">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-token">Token</label>
+    <input type="password" id="node-config-input-token">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-timeoutMs">Timeout</label>
+    <input type="text" id="node-config-input-timeoutMs">
+  </div>
+</script>
+
+<script type="text/html" data-template-name="liquid-stoolap-sql">
+  <div class="form-row">
+    <label for="node-input-name">Name</label>
+    <input type="text" id="node-input-name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-server">Server</label>
+    <input type="text" id="node-input-server">
+  </div>
+  <div class="form-row">
+    <label for="node-input-sql">SQL</label>
+    <input type="text" id="node-input-sql">
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeoutMs">Timeout</label>
+    <input type="text" id="node-input-timeoutMs">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="liquid-stoolap-sql">
+  <p>Executes SQL through Liquid Stoolap.</p>
+  <p>When SQL is not configured on the node, <code>msg.topic</code> is used.</p>
+  <p><code>msg.payload</code> supplies named parameters.</p>
+  <p>Successful responses are written to <code>msg.payload</code> on output 1.</p>
+  <p>Errors are written to <code>msg.error</code> on output 2 and reported to Catch nodes.</p>
+</script>

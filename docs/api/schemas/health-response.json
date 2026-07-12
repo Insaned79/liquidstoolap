@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquidstoolap.local/schema/health-response.json",
+  "title": "HealthResponse",
+  "type": "object",
+  "required": ["ok", "status", "request_id", "version", "uptime_s", "ready", "auth_enabled"],
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "degraded"]
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "uptime_s": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "auth_enabled": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}

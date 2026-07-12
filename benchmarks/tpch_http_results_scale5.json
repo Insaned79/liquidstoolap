@@ -1,0 +1,103 @@
+{
+  "benchmark": "TPC-H inspired HTTP benchmark",
+  "official_tpc_result": false,
+  "scale": 5,
+  "repeats": 3,
+  "rows": {
+    "customer": 25000,
+    "orders": 150000,
+    "lineitem": 600000
+  },
+  "setup_ms": [
+    {
+      "step": "CREATE TABLE",
+      "duration_ms": 0.7532860618084669
+    },
+    {
+      "step": "CREATE TABLE",
+      "duration_ms": 0.6634950404986739
+    },
+    {
+      "step": "CREATE TABLE",
+      "duration_ms": 0.6938430014997721
+    },
+    {
+      "step": "CREATE TABLE",
+      "duration_ms": 0.701306969858706
+    },
+    {
+      "step": "INSERT INTO",
+      "duration_ms": 1.1232260148972273
+    },
+    {
+      "step": "INSERT INTO",
+      "duration_ms": 35.746806068345904
+    },
+    {
+      "step": "INSERT INTO",
+      "duration_ms": 216.3750290637836
+    },
+    {
+      "step": "INSERT INTO",
+      "duration_ms": 1070.3416840406135
+    },
+    {
+      "step": "CREATE INDEX",
+      "duration_ms": 4.531647078692913
+    },
+    {
+      "step": "CREATE INDEX",
+      "duration_ms": 50.40367599576712
+    },
+    {
+      "step": "CREATE INDEX",
+      "duration_ms": 291.3261130452156
+    },
+    {
+      "step": "CREATE INDEX",
+      "duration_ms": 177.34163301065564
+    }
+  ],
+  "queries": [
+    {
+      "query": "Q1-pricing-summary",
+      "rows": 2,
+      "client_avg_ms": 58.834963012486696,
+      "client_median_ms": 58.99249098729342,
+      "client_p95_ms": 59.491946012713015,
+      "backend_avg_ms": 58.0,
+      "min_ms": 58.02045203745365,
+      "max_ms": 59.491946012713015
+    },
+    {
+      "query": "Q3-shipping-priority",
+      "rows": 10,
+      "client_avg_ms": 250.6435626807312,
+      "client_median_ms": 256.07577699702233,
+      "client_p95_ms": 258.6291800253093,
+      "backend_avg_ms": 249.33333333333334,
+      "min_ms": 237.225731019862,
+      "max_ms": 258.6291800253093
+    },
+    {
+      "query": "Q5-local-supplier-volume",
+      "rows": 5,
+      "client_avg_ms": 2300.433036638424,
+      "client_median_ms": 2263.6808719253168,
+      "client_p95_ms": 2390.670547960326,
+      "backend_avg_ms": 2299.3333333333335,
+      "min_ms": 2246.9476900296286,
+      "max_ms": 2390.670547960326
+    },
+    {
+      "query": "Q6-forecasting-revenue",
+      "rows": 1,
+      "client_avg_ms": 21.38129703234881,
+      "client_median_ms": 21.193191059865057,
+      "client_p95_ms": 21.84404304716736,
+      "backend_avg_ms": 20.666666666666668,
+      "min_ms": 21.106656990014017,
+      "max_ms": 21.84404304716736
+    }
+  ]
+}

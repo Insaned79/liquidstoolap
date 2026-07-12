@@ -1,0 +1,19 @@
+{
+  "name": "node-red-contrib-liquidstoolap",
+  "version": "0.1.0",
+  "description": "Node-RED nodes for Liquid Stoolap",
+  "keywords": ["node-red", "stoolap", "sql"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "node-red": {
+    "nodes": {
+      "liquid-stoolap": "liquid-stoolap.js"
+    }
+  },
+  "scripts": {
+    "test": "node test/runtime-smoke.test.js",
+    "pack:check": "npm pack --dry-run"
+  }
+}

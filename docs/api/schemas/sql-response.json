@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquidstoolap.local/schema/sql-response.json",
+  "title": "SqlResponse",
+  "type": "object",
+  "required": ["ok", "request_id", "duration_ms", "result"],
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "const": true
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "result": {
+      "oneOf": [
+        {
+          "$ref": "sql-result-set.json"
+        },
+        {
+          "$ref": "sql-command-result.json"
+        }
+      ]
+    }
+  }
+}

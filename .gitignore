@@ -1,0 +1,40 @@
+# Local planning/spec files
+spec.md
+todo.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.bench-venv/
+
+# Node
+node_modules/
+
+# Build artifacts
+artifacts/
+dist/
+build/
+server/data/
+*.egg-info/
+*.o
+*.ppu
+*.a
+*.so
+coverage/
+htmlcov/
+.cargo-home/
+.cargo-target/
+
+# Local upstream/dependency checkouts
+vendor/stoolap/
+
+# IDE
+.idea/
+.vscode/

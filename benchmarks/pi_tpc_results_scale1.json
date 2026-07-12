@@ -1,0 +1,1776 @@
+{
+  "official_tpc_result": false,
+  "note": "TPC-H/TPC-DS inspired analytical workloads over TCP; TPC-C intentionally omitted for this Pi run.",
+  "host": "Raspberry Pi test host",
+  "remote": "pi@raspberry-pi-test-host",
+  "remote_data_dir": "/home/pi/liquidstoolap-bench/dbdata",
+  "scale": 1,
+  "repeats": 3,
+  "engines": [
+    {
+      "engine": "liquid-stoolap",
+      "tpch_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 47.7666980586946,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 19.445015001110733,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 19.00711702182889,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 17.59501500055194,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 69.56623902078718,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 113.48084697965533,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 674.6146799996495,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 6791.406888980418,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 3065.703260945156,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 454.07644007354975,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 996.9116570428014,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 460.8487749937922,
+          "result": null
+        }
+      ],
+      "tpch": [
+        {
+          "query": "H-Q1",
+          "rows": 2,
+          "avg_ms": 129.34355395069966,
+          "median_ms": 129.49773599393666,
+          "p95_ms": 129.50999895110726,
+          "min_ms": 129.02292690705508,
+          "max_ms": 129.50999895110726
+        },
+        {
+          "query": "H-Q3",
+          "rows": 10,
+          "avg_ms": 361.12532403785735,
+          "median_ms": 320.09048108011484,
+          "p95_ms": 443.4120609657839,
+          "min_ms": 319.8734300676733,
+          "max_ms": 443.4120609657839
+        },
+        {
+          "query": "H-Q5",
+          "rows": 5,
+          "avg_ms": 1930.0110519786056,
+          "median_ms": 2137.953937985003,
+          "p95_ms": 2216.5200270246714,
+          "min_ms": 1435.559190926142,
+          "max_ms": 2216.5200270246714
+        },
+        {
+          "query": "H-Q6",
+          "rows": 1,
+          "avg_ms": 52.53205867484212,
+          "median_ms": 52.54807497840375,
+          "p95_ms": 52.58734000381082,
+          "min_ms": 52.46076104231179,
+          "max_ms": 52.58734000381082
+        }
+      ],
+      "tpcds_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 22.44434191379696,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 17.820411012507975,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 18.293736968189478,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 17.441364005208015,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 18.267347011715174,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 99.67547398991883,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 278.18705805111676,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 368.92959906253964,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 965.5650790082291,
+          "result": null
+        },
+        {
+          "step": "insert",
+          "duration_ms": 5396.018428960815,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 463.66020501591265,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 262.4406210379675,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 484.6678769681603,
+          "result": null
+        }
+      ],
+      "tpcds": [
+        {
+          "query": "DS-Q3",
+          "rows": 48,
+          "avg_ms": 601.2046707328409,
+          "median_ms": 599.7519080992788,
+          "p95_ms": 604.3590060435236,
+          "min_ms": 599.5030980557203,
+          "max_ms": 604.3590060435236
+        },
+        {
+          "query": "DS-Q7",
+          "rows": 12,
+          "avg_ms": 339.525864381964,
+          "median_ms": 339.53878202009946,
+          "p95_ms": 340.3119450667873,
+          "min_ms": 338.72686605900526,
+          "max_ms": 340.3119450667873
+        },
+        {
+          "query": "DS-Q19",
+          "rows": 5,
+          "avg_ms": 657.7892610027144,
+          "median_ms": 672.7688469691202,
+          "p95_ms": 680.2539300406352,
+          "min_ms": 620.3450059983879,
+          "max_ms": 680.2539300406352
+        }
+      ]
+    },
+    {
+      "engine": "firebird",
+      "tpch_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 558.7691570399329,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 597.774627036415,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 269.8216380085796,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 266.7942700209096,
+          "result": null
+        },
+        {
+          "step": "insert nation",
+          "duration_ms": 560.323477955535,
+          "result": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 950.4906340735033,
+          "result": null
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 2436.574340099469,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 1001.6926520038396,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 849.6011219685897,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 665.2215040521696,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 3162.1315659722313,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 883.4906200645491,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 748.00524499733,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 718.4428840409964,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 3499.3774780305102,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 1749.5859649498016,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 553.4713419619948,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 672.3905400140211,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 939.1584489494562,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1124.1838600253686,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1055.3146400488913,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1154.4442999875173,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1123.2700688997284,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1168.8962569460273,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1157.6453879242763,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1057.9988079844043,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1120.8059069467708,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1020.015393034555,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1092.300415970385,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 2811.658259946853,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 925.9119130438194,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1136.503120069392,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 2108.218466048129,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1534.3441549921408,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 693.7138290377334,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1080.3851489908993,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1054.3883949285373,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1184.2093429295346,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1060.3370220633224,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1066.6029179701582,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1734.302712022327,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1073.2519910670817,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1060.7222710968927,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1198.7660279264674,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 903.5339469555765,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1092.8504159674048,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1063.2468479452655,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1138.6191729689017,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1561.131834052503,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 981.2162129674107,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1053.6679420620203,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1212.4174099881202,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1051.8717829836532,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1111.0349360387772,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1019.0629389835522,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 757.66260700766,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1500.7938380585983,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1060.4128949344158,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1061.1125290160999,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 3040.7053360249847,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1060.4372099041939,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1092.8764740237966,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1069.7916119825095,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 854.0373049909249,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 698.8105829805136,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1910.386750008911,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1929.998289910145,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 80.71394299622625,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 168.46681607421488,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 631.4173660939559,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 1381.0409010620788,
+          "result": null
+        }
+      ],
+      "tpch": [
+        {
+          "query": "H-Q1",
+          "rows": 2,
+          "avg_ms": 1729.453036018337,
+          "median_ms": 1788.3637179620564,
+          "p95_ms": 1808.951135026291,
+          "min_ms": 1591.044255066663,
+          "max_ms": 1808.951135026291
+        },
+        {
+          "query": "H-Q3",
+          "rows": 10,
+          "avg_ms": 253.95323631043235,
+          "median_ms": 252.72310094442219,
+          "p95_ms": 257.43137195240706,
+          "min_ms": 251.70523603446782,
+          "max_ms": 257.43137195240706
+        },
+        {
+          "query": "H-Q5",
+          "rows": 5,
+          "avg_ms": 2488.6837893088036,
+          "median_ms": 2507.6991379028186,
+          "p95_ms": 2566.92633300554,
+          "min_ms": 2391.4258970180526,
+          "max_ms": 2566.92633300554
+        },
+        {
+          "query": "H-Q6",
+          "rows": 1,
+          "avg_ms": 258.9089470372225,
+          "median_ms": 258.9414990507066,
+          "p95_ms": 258.96862999070436,
+          "min_ms": 258.8167120702565,
+          "max_ms": 258.96862999070436
+        }
+      ],
+      "tpcds_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 238.48365701269358,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 258.2587270298973,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 753.2043399987742,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 233.2618460059166,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 264.30745294783264,
+          "result": null
+        },
+        {
+          "step": "insert date",
+          "duration_ms": 1205.613211961463,
+          "result": null
+        },
+        {
+          "step": "insert item",
+          "duration_ms": 4670.273413998075,
+          "result": null
+        },
+        {
+          "step": "insert address",
+          "duration_ms": 8967.064133030362,
+          "result": null
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 7294.290431891568,
+          "result": null
+        },
+        {
+          "step": "insert sales",
+          "duration_ms": 49864.14827196859,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 761.8333069840446,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 798.5312590608373,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 455.87067189626396,
+          "result": null
+        }
+      ],
+      "tpcds": [
+        {
+          "query": "DS-Q3",
+          "rows": 48,
+          "avg_ms": 957.7428576691697,
+          "median_ms": 956.324886996299,
+          "p95_ms": 961.5870360285044,
+          "min_ms": 955.3166499827057,
+          "max_ms": 961.5870360285044
+        },
+        {
+          "query": "DS-Q7",
+          "rows": 12,
+          "avg_ms": 2730.624476020845,
+          "median_ms": 2864.0192850725725,
+          "p95_ms": 2871.0737240035087,
+          "min_ms": 2456.7804189864546,
+          "max_ms": 2871.0737240035087
+        },
+        {
+          "query": "DS-Q19",
+          "rows": 5,
+          "avg_ms": 1961.3384363086273,
+          "median_ms": 2242.8193849045783,
+          "p95_ms": 2392.1124869957566,
+          "min_ms": 1249.083437025547,
+          "max_ms": 2392.1124869957566
+        }
+      ]
+    },
+    {
+      "engine": "mariadb",
+      "tpch_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 78.54526909068227,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 82.90549006778747,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 66.71318993903697,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 35.80511303152889,
+          "result": null
+        },
+        {
+          "step": "insert nation",
+          "duration_ms": 125.69170305505395,
+          "result": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 102.68831404391676,
+          "result": null
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 1348.5556649975479,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 477.0122879417613,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 123.36169404443353,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 119.60877291858196,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 123.39605903252959,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 125.37511391565204,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 126.03767798282206,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 124.09513199236244,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 117.85150703508407,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 125.96067192498595,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 126.38334196526557,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 128.1933670397848,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 179.60999091155827,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 143.01589503884315,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 137.96931598335505,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 165.62169091776013,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 166.0620339680463,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 171.55632097274065,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 167.04824101179838,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 167.64318698551506,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 182.47895990498364,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 184.25399798434228,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 145.32951300498098,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 144.36255290638655,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 139.1678829677403,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 138.64007394295186,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 140.77353209722787,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 142.3209400381893,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 970.9527260856703,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 728.9517549797893,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 152.78902801219374,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 149.92387709207833,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 151.5872139716521,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 152.65098691452295,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 149.4068190222606,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 151.35534503497183,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 146.17433201055974,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 165.98828497808427,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 150.80788894556463,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 1027.7127320878208,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 403.8822449510917,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 154.52773903962225,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 165.24367593228817,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 172.82118496950716,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 158.03826099727303,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 161.95624496322125,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 149.85907403752208,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 153.53327698539943,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 154.2666640598327,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 153.05398998316377,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 153.67219899781048,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 155.63106606714427,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 148.99358595721424,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 168.99444395676255,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 154.71241797786206,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 156.06479707639664,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 155.12310503982008,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 152.81226206570864,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 157.18260302674025,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 158.92839501611888,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 153.75563804991543,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 140.297731035389,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 272.9610370006412,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 993.0983519880101,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 1457.2745289187878,
+          "result": null
+        }
+      ],
+      "tpch": [
+        {
+          "query": "H-Q1",
+          "rows": 2,
+          "avg_ms": 1021.4493696888288,
+          "median_ms": 1018.3146479539573,
+          "p95_ms": 1028.7255080183968,
+          "min_ms": 1017.3079530941322,
+          "max_ms": 1028.7255080183968
+        },
+        {
+          "query": "H-Q3",
+          "rows": 10,
+          "avg_ms": 179.5636030146852,
+          "median_ms": 201.8925549928099,
+          "p95_ms": 225.18579300958663,
+          "min_ms": 111.61246104165912,
+          "max_ms": 225.18579300958663
+        },
+        {
+          "query": "H-Q5",
+          "rows": 5,
+          "avg_ms": 1727.9595386547346,
+          "median_ms": 1926.0463620303199,
+          "p95_ms": 1939.1556489281356,
+          "min_ms": 1318.6766050057486,
+          "max_ms": 1939.1556489281356
+        },
+        {
+          "query": "H-Q6",
+          "rows": 1,
+          "avg_ms": 357.69999232919264,
+          "median_ms": 416.7174029862508,
+          "p95_ms": 417.0346329919994,
+          "min_ms": 239.34794100932777,
+          "max_ms": 417.0346329919994
+        }
+      ],
+      "tpcds_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 40.20986799150705,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 36.031301016919315,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 42.85913100466132,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 38.55352301616222,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 41.22641100548208,
+          "result": null
+        },
+        {
+          "step": "insert date",
+          "duration_ms": 183.21679497603327,
+          "result": null
+        },
+        {
+          "step": "insert item",
+          "duration_ms": 531.0811189701781,
+          "result": null
+        },
+        {
+          "step": "insert address",
+          "duration_ms": 2658.254108042456,
+          "result": null
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 1026.4376580016688,
+          "result": null
+        },
+        {
+          "step": "insert sales",
+          "duration_ms": 7279.1986159281805,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 1217.3251889180392,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 1013.4905079612508,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 1015.8236640272662,
+          "result": null
+        }
+      ],
+      "tpcds": [
+        {
+          "query": "DS-Q3",
+          "rows": 48,
+          "avg_ms": 2877.2543867041045,
+          "median_ms": 2879.3839931022376,
+          "p95_ms": 2894.804653013125,
+          "min_ms": 2857.5745139969513,
+          "max_ms": 2894.804653013125
+        },
+        {
+          "query": "DS-Q7",
+          "rows": 12,
+          "avg_ms": 1945.6434699629124,
+          "median_ms": 2181.3551229424775,
+          "p95_ms": 2422.6637249812484,
+          "min_ms": 1232.911561965011,
+          "max_ms": 2422.6637249812484
+        },
+        {
+          "query": "DS-Q19",
+          "rows": 5,
+          "avg_ms": 1644.1997356402378,
+          "median_ms": 1800.9631069144234,
+          "p95_ms": 1958.5081660188735,
+          "min_ms": 1173.1279339874163,
+          "max_ms": 1958.5081660188735
+        }
+      ]
+    },
+    {
+      "engine": "postgres",
+      "tpch_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 51.67574493680149,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 30.294856056571007,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 32.54244907293469,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 15.895307995378971,
+          "result": null
+        },
+        {
+          "step": "insert nation",
+          "duration_ms": 511.31892297416925,
+          "result": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 684.6804500091821,
+          "result": null
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 990.9788989461958,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 397.0369410235435,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 154.96473503299057,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 145.11487702839077,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 136.59745908807963,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 150.04876302555203,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 149.83474707696587,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 149.94474698323756,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 144.73116002045572,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 152.95702603179961,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 145.76675998978317,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 138.15376407001168,
+          "result": null
+        },
+        {
+          "step": "insert orders",
+          "duration_ms": 148.4224050072953,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 214.69337795861065,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 208.00269790925086,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.6902540391311,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 222.318206098862,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.0148750897497,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.44512004218996,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 120.00439094845206,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 120.29900692868978,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 116.60521803423762,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 187.93176696635783,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.60447096452117,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 205.70729405153543,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 209.69173300545663,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 205.77154494822025,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 212.0088569354266,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 207.52286992501467,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 208.00239697564393,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 209.44733102805912,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 217.1970959752798,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 209.23683198634535,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 215.11841204483062,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 204.9422760028392,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 212.0257900096476,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.42029191367328,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.1993540264666,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 210.2499189786613,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 207.09981897380203,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 207.6444289414212,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 209.70340608619153,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 206.15868805907667,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 208.0332749756053,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 208.98534695152193,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 208.38592189829797,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 207.77104806620628,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 198.8194810692221,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 198.30408494453877,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 171.392660937272,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 149.55022896174341,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 197.13432097341865,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 199.18286707252264,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 200.78276505228132,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 199.0513289347291,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 197.5945020094514,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 198.00121197476983,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 198.86662892531604,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 197.68343004398048,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 197.61521101463586,
+          "result": null
+        },
+        {
+          "step": "insert lineitem",
+          "duration_ms": 199.58284392487258,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 39.374977932311594,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 121.24600994866341,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 852.9101259773597,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 774.8798509128392,
+          "result": null
+        }
+      ],
+      "tpch": [
+        {
+          "query": "H-Q1",
+          "rows": 2,
+          "avg_ms": 325.6855079283317,
+          "median_ms": 325.34426893107593,
+          "p95_ms": 326.4276789268479,
+          "min_ms": 325.2845759270713,
+          "max_ms": 326.4276789268479
+        },
+        {
+          "query": "H-Q3",
+          "rows": 10,
+          "avg_ms": 79.29512097810705,
+          "median_ms": 68.00778897013515,
+          "p95_ms": 112.17817198485136,
+          "min_ms": 57.69940197933465,
+          "max_ms": 112.17817198485136
+        },
+        {
+          "query": "H-Q5",
+          "rows": 5,
+          "avg_ms": 605.0578183494508,
+          "median_ms": 605.3456759545952,
+          "p95_ms": 605.9991830261424,
+          "min_ms": 603.8285960676149,
+          "max_ms": 605.9991830261424
+        },
+        {
+          "query": "H-Q6",
+          "rows": 1,
+          "avg_ms": 50.1798140273119,
+          "median_ms": 50.20172498188913,
+          "p95_ms": 50.209300010465086,
+          "min_ms": 50.12841708958149,
+          "max_ms": 50.209300010465086
+        }
+      ],
+      "tpcds_setup": [
+        {
+          "step": "TABLE",
+          "duration_ms": 37.87892695982009,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 37.86320798099041,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 30.78818996436894,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 37.72307198960334,
+          "result": null
+        },
+        {
+          "step": "TABLE",
+          "duration_ms": 14.534121961332858,
+          "result": null
+        },
+        {
+          "step": "insert date",
+          "duration_ms": 168.96612895652652,
+          "result": null
+        },
+        {
+          "step": "insert item",
+          "duration_ms": 2091.0327669698745,
+          "result": null
+        },
+        {
+          "step": "insert address",
+          "duration_ms": 1242.0185629744083,
+          "result": null
+        },
+        {
+          "step": "insert customer",
+          "duration_ms": 4204.091742984019,
+          "result": null
+        },
+        {
+          "step": "insert sales",
+          "duration_ms": 8869.461604976095,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 468.7337900977582,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 448.7816150067374,
+          "result": null
+        },
+        {
+          "step": "index",
+          "duration_ms": 422.87204798776656,
+          "result": null
+        }
+      ],
+      "tpcds": [
+        {
+          "query": "DS-Q3",
+          "rows": 48,
+          "avg_ms": 187.30881169904023,
+          "median_ms": 187.4013530323282,
+          "p95_ms": 187.68801598343998,
+          "min_ms": 186.83706608135253,
+          "max_ms": 187.68801598343998
+        },
+        {
+          "query": "DS-Q7",
+          "rows": 12,
+          "avg_ms": 316.66366565817344,
+          "median_ms": 297.36806999426335,
+          "p95_ms": 434.3540139961988,
+          "min_ms": 218.26891298405826,
+          "max_ms": 434.3540139961988
+        },
+        {
+          "query": "DS-Q19",
+          "rows": 5,
+          "avg_ms": 507.39032903220505,
+          "median_ms": 507.8863879898563,
+          "p95_ms": 512.6359050627798,
+          "min_ms": 501.64869404397905,
+          "max_ms": 512.6359050627798
+        }
+      ]
+    }
+  ],
+  "started_at": "2026-07-12T03:07:06+0300",
+  "data_filesystems": "Filesystem     1024-blocks    Used Available Capacity Mounted on\n/dev/root          7436076 5144368   1952236      73% /\n/dev/root          7436076 5144368   1952236      73% /\n/dev/root          7436076 5144368   1952236      73% /\n/dev/root          7436076 5144368   1952236      73% /\n",
+  "omitted": {
+    "tpcc": "Omitted: transaction-mix result is not comparable for the current Liquid HTTP adapter."
+  },
+  "finished_at": "2026-07-12T03:13:03+0300"
+}

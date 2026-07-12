@@ -1,0 +1,26 @@
+name: Release Node-RED Connector
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test package
+        working-directory: packages/node-red
+        run: npm test
+      - name: Create npm tarball
+        working-directory: packages/node-red
+        run: npm pack
+      - name: Upload npm tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquidstoolap-node-red-dist
+          path: packages/node-red/*.tgz

@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Free Pascal
+        run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl
+      - name: Build Stoolap FFI
+        run: |
+          git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
+          CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
+            cargo build --release --features ffi --no-default-features \
+            --manifest-path vendor/stoolap/Cargo.toml
+      - name: Server unit tests
+        run: make -C server test
+      - name: Server smoke
+        run: make -C server smoke
+
+  python-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Free Pascal
+        run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl
+      - name: Build Stoolap FFI
+        run: |
+          git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
+          CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
+            cargo build --release --features ffi --no-default-features \
+            --manifest-path vendor/stoolap/Cargo.toml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install SDK dependencies
+        run: python -m pip install -e "sdk/python[dev]"
+      - name: SDK lint
+        run: |
+          ruff check sdk/python/src sdk/python/tests
+          mypy sdk/python/src/liquidstoolap
+      - name: SDK unit tests
+        run: pytest -q sdk/python/tests/test_models.py sdk/python/tests/test_client_errors.py
+      - name: SDK smoke
+        run: python sdk/python/tests/smoke_sdk.py
+      - name: SDK build artifacts
+        run: python -m build sdk/python
+
+  node-red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Node-RED package checks
+        working-directory: packages/node-red
+        run: |
+          npm test
+          npm run pack:check

@@ -1,0 +1,35 @@
+name: Release Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Free Pascal
+        run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl
+      - name: Build Stoolap FFI
+        run: |
+          git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
+          CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
+            cargo build --manifest-path vendor/stoolap/Cargo.toml --release --no-default-features --features ffi
+      - name: Build and smoke-test server
+        run: make -C server smoke
+      - name: Stage server artifact
+        run: |
+          mkdir -p dist/liquidstoolap-server
+          cp server/build/liquidstoolap dist/liquidstoolap-server/
+          cp .cargo-target/release/libstoolap.so dist/liquidstoolap-server/
+          cp config/config.example.ini dist/liquidstoolap-server/
+          cp LICENSE dist/liquidstoolap-server/
+          cp docs/user-guide.md dist/liquidstoolap-server/
+          tar -C dist -czf dist/liquidstoolap-server-linux-x86_64.tar.gz liquidstoolap-server
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: liquidstoolap-server-linux-x86_64
+          path: dist/liquidstoolap-server-linux-x86_64.tar.gz

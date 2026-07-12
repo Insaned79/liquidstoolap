@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquidstoolap.local/schema/error-response.json",
+  "title": "ErrorResponse",
+  "type": "object",
+  "required": ["ok", "request_id", "error"],
+  "additionalProperties": false,
+  "properties": {
+    "ok": {
+      "const": false
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "category", "message", "retryable"],
+      "additionalProperties": true,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

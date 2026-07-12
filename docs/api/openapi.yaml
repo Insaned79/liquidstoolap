@@ -1,0 +1,147 @@
+openapi: 3.1.0
+info:
+  title: Liquid Stoolap API
+  version: 1.0.0
+  description: Minimal SQL-over-HTTP API for Liquid Stoolap.
+servers:
+  - url: http://127.0.0.1:8321
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Check service readiness.
+      security: []
+      responses:
+        "200":
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/health-response.json"
+        "503":
+          description: Service is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/health-response.json"
+  /auth/token:
+    post:
+      summary: Issue a bearer token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Token issued.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/token-response.json"
+        "400":
+          description: Invalid request.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "403":
+          description: Token issuing disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "503":
+          description: Auth store unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+  /sql:
+    post:
+      summary: Execute one SQL statement.
+      description: Executes a single SQL statement against the configured Stoolap database. Multi-statement SQL is rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "./schemas/sql-request.json"
+      responses:
+        "200":
+          description: SQL executed.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/sql-response.json"
+        "400":
+          description: Invalid JSON or request shape.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "401":
+          description: Missing or invalid bearer token.
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "403":
+          description: Insufficient token scope.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "422":
+          description: Invalid SQL request or SQL error.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "503":
+          description: Stoolap backend unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+        "504":
+          description: Stoolap backend timeout.
+          content:
+            application/json:
+              schema:
+                $ref: "./schemas/error-response.json"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  schemas:
+    TokenRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+        password:
+          type: string

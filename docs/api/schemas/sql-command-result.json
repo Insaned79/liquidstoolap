@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquidstoolap.local/schema/sql-command-result.json",
+  "title": "SqlCommandResult",
+  "type": "object",
+  "required": ["kind"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "command"
+    },
+    "affected_rows": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_insert_id": {
+      "type": ["string", "number", "null"]
+    }
+  }
+}
