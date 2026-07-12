@@ -8,6 +8,7 @@ module.exports = function registerLiquidStoolap(RED) {
     this.authMode = config.authMode || "token";
     this.timeoutMs = Number(config.timeoutMs || 30000);
     this.verifyTls = config.verifyTls !== false;
+    this.token = null;
   }
 
   RED.nodes.registerType("liquid-stoolap-config", LiquidStoolapConfigNode, {
@@ -79,8 +80,9 @@ async function callSql(server, body, timeoutMs) {
   const timer = setTimeout(() => controller.abort(), timeoutMs || 30000);
   try {
     const headers = { "Content-Type": "application/json" };
-    if (server.credentials && server.credentials.token) {
-      headers.Authorization = `Bearer ${server.credentials.token}`;
+    const authorization = await getAuthorization(server, timeoutMs);
+    if (authorization) {
+      headers.Authorization = authorization;
     }
 
     const response = await fetch(`${server.baseUrl}/sql`, {
@@ -100,6 +102,56 @@ async function callSql(server, body, timeoutMs) {
       throw err;
     }
     return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getAuthorization(server, timeoutMs) {
+  if (!server.credentials) {
+    return "";
+  }
+
+  if (server.credentials.token) {
+    return `Bearer ${server.credentials.token}`;
+  }
+
+  const username = server.credentials.username;
+  const password = server.credentials.password;
+  if (!username || !password) {
+    return "";
+  }
+
+  if (!server.token) {
+    server.token = await issueToken(server, username, password, timeoutMs);
+  }
+  return `Bearer ${server.token}`;
+}
+
+async function issueToken(server, username, password, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || 30000);
+  try {
+    const response = await fetch(`${server.baseUrl}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      signal: controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = data.error || {};
+      const err = makeNodeError(error.code || "auth_error", error.message || response.statusText);
+      err.category = error.category || "auth";
+      err.statusCode = response.status;
+      err.retryable = Boolean(error.retryable);
+      err.details = error.details;
+      throw err;
+    }
+    if (!data.token || !data.token.access_token) {
+      throw makeNodeError("auth_error", "token response did not include access_token");
+    }
+    return data.token.access_token;
   } finally {
     clearTimeout(timer);
   }

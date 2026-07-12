@@ -101,6 +101,14 @@ rows = post({"sql": "SELECT name FROM unicode_t"})["result"]["rows"]
 values = [row["values"][0] for row in rows]
 assert values == ["Детская", "Спальня"], values
 
+post({"sql": "CREATE TABLE insert_select_t (id INTEGER, name TEXT, ts TIMESTAMP, v FLOAT)"})
+post({
+    "sql": "INSERT INTO insert_select_t (id, name, ts, v) SELECT COALESCE(max(id), 0) + 1, :name, :ts, :v FROM insert_select_t",
+    "params": {"name": "Спальня", "ts": "2026-07-12 13:14:15.123", "v": 42.5},
+})
+insert_select = post({"sql": "SELECT id, name, ts, v FROM insert_select_t"})["result"]
+assert insert_select["rows"][0]["values"] == [1, "Спальня", "2026-07-12T13:14:15.123000000Z", 42.5], insert_select
+
 post({"sql": "CREATE TABLE timestamp_t (ts TIMESTAMP)"})
 post({"sql": "INSERT INTO timestamp_t VALUES ('2026-01-02 03:04:05')"})
 timestamp_result = post({"sql": "SELECT ts FROM timestamp_t"})["result"]

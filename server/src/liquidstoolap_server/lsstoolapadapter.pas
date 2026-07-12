@@ -250,6 +250,127 @@ begin
   end;
 end;
 
+function SqlLiteral(Value: TJSONData): string;
+var
+  Raw: string;
+begin
+  case Value.JSONType of
+    jtNull:
+      Result := 'NULL';
+    jtBoolean:
+      if Value.AsBoolean then
+        Result := 'TRUE'
+      else
+        Result := 'FALSE';
+    jtNumber:
+      Result := Value.AsJSON;
+    jtString:
+      begin
+        Raw := Value.AsString;
+        Raw := StringReplace(Raw, '''', '''''', [rfReplaceAll]);
+        Result := '''' + Raw + '''';
+      end;
+  else
+    raise EStoolapAdapterError.Create('unsupported SQL parameter type');
+  end;
+end;
+
+function IsIdentifierStart(const Ch: Char): Boolean;
+begin
+  Result := (Ch = '_') or (Ch in ['A'..'Z']) or (Ch in ['a'..'z']);
+end;
+
+function IsIdentifierChar(const Ch: Char): Boolean;
+begin
+  Result := IsIdentifierStart(Ch) or (Ch in ['0'..'9']);
+end;
+
+function MaterializeNamedParams(const Sql: string; Params: TJSONObject): string;
+var
+  I: Integer;
+  Start: Integer;
+  ParamName: string;
+  Value: TJSONData;
+  InSingleQuote: Boolean;
+  InDoubleQuote: Boolean;
+begin
+  Result := '';
+  I := 1;
+  InSingleQuote := False;
+  InDoubleQuote := False;
+
+  while I <= Length(Sql) do
+  begin
+    if InSingleQuote then
+    begin
+      Result := Result + Sql[I];
+      if Sql[I] = '''' then
+      begin
+        if (I < Length(Sql)) and (Sql[I + 1] = '''') then
+        begin
+          Inc(I);
+          Result := Result + Sql[I];
+        end
+        else
+          InSingleQuote := False;
+      end;
+      Inc(I);
+      Continue;
+    end;
+
+    if InDoubleQuote then
+    begin
+      Result := Result + Sql[I];
+      if Sql[I] = '"' then
+      begin
+        if (I < Length(Sql)) and (Sql[I + 1] = '"') then
+        begin
+          Inc(I);
+          Result := Result + Sql[I];
+        end
+        else
+          InDoubleQuote := False;
+      end;
+      Inc(I);
+      Continue;
+    end;
+
+    if Sql[I] = '''' then
+    begin
+      InSingleQuote := True;
+      Result := Result + Sql[I];
+      Inc(I);
+      Continue;
+    end;
+
+    if Sql[I] = '"' then
+    begin
+      InDoubleQuote := True;
+      Result := Result + Sql[I];
+      Inc(I);
+      Continue;
+    end;
+
+    if (Sql[I] = ':') and ((I = 1) or (Sql[I - 1] <> ':')) and
+      (I < Length(Sql)) and IsIdentifierStart(Sql[I + 1]) then
+    begin
+      Start := I + 1;
+      I := Start;
+      while (I <= Length(Sql)) and IsIdentifierChar(Sql[I]) do
+        Inc(I);
+      ParamName := Copy(Sql, Start, I - Start);
+      Value := Params.Find(ParamName);
+      if Value = nil then
+        raise EStoolapAdapterError.Create('missing SQL parameter: ' + ParamName);
+      Result := Result + SqlLiteral(Value);
+      Continue;
+    end;
+
+    Result := Result + Sql[I];
+    Inc(I);
+  end;
+end;
+
 function TStoolapAdapter.RowsToJson(Rows: PStoolapRows): TJSONObject;
 var
   Status: Integer;
@@ -390,27 +511,16 @@ function TStoolapAdapter.CommandJson(const Sql: string; Params: TJSONObject; Tim
 var
   Status: Integer;
   RowsAffected: Int64;
-  NamedParams: array of TStoolapNamedParam;
-  Names: array of RawByteString;
-  TextValues: array of RawByteString;
   SqlBytes: RawByteString;
+  EffectiveSql: string;
 begin
   Open;
-  SqlBytes := Utf8Bytes(Sql);
-  RowsAffected := 0;
-  SetLength(NamedParams, 0);
-  SetLength(Names, 0);
-  SetLength(TextValues, 0);
+  EffectiveSql := Sql;
   if (Params <> nil) and (Params.Count > 0) then
-  begin
-    SetLength(NamedParams, Params.Count);
-    SetLength(Names, Params.Count);
-    SetLength(TextValues, Params.Count);
-    BuildNamedParams(Params, NamedParams, Names, TextValues);
-    Status := FLibrary.ExecNamedTimeout(FDb, PChar(SqlBytes), @NamedParams[0], Length(NamedParams), TimeoutMs, @RowsAffected);
-  end
-  else
-    Status := FLibrary.ExecNamedTimeout(FDb, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
+    EffectiveSql := MaterializeNamedParams(Sql, Params);
+  SqlBytes := Utf8Bytes(EffectiveSql);
+  RowsAffected := 0;
+  Status := FLibrary.ExecNamedTimeout(FDb, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
 
   if Status <> STOOLAP_OK then
     RaiseBackendError('Stoolap exec failed: ', LastDbError);

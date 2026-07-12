@@ -5,6 +5,7 @@ const register = require("../liquid-stoolap.js");
 
 const registered = {};
 const sentMessages = [];
+let serverCredentials = { token: "token" };
 const RED = {
   nodes: {
     createNode(node) {
@@ -26,7 +27,7 @@ const RED = {
       return {
         baseUrl: "http://example.invalid",
         timeoutMs: 100,
-        credentials: { token: "token" }
+        credentials: serverCredentials
       };
     }
   }
@@ -111,6 +112,40 @@ async function run() {
   assert.equal(errorOutput[1].error.code, "sql_error");
   assert.equal(errorOutput[1].error.statusCode, 422);
   assert.equal(failing.lastError.message, "bad SQL");
+
+  serverCredentials = { username: "admin", password: "secret" };
+  const urls = [];
+  global.fetch = async (url, options) => {
+    urls.push({ url, options });
+    if (url.endsWith("/auth/token")) {
+      assert.deepEqual(JSON.parse(options.body), { username: "admin", password: "secret" });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          request_id: "auth",
+          token: { access_token: "issued-token", token_type: "Bearer", expires_in: 3600 }
+        })
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        request_id: "sql",
+        duration_ms: 1,
+        result: { kind: "command", affected_rows: 1, last_insert_id: null }
+      })
+    };
+  };
+
+  const loginNode = new SqlNode({ server: "server-1", sql: "INSERT INTO t VALUES (:v)", timeoutMs: 250 });
+  await loginNode.handlers.input({ payload: { v: 1 } }, (outputs) => sentMessages.push(outputs), () => {});
+  assert.equal(urls[0].url, "http://example.invalid/auth/token");
+  assert.equal(urls[1].url, "http://example.invalid/sql");
+  assert.equal(urls[1].options.headers.Authorization, "Bearer issued-token");
 }
 
 run()
