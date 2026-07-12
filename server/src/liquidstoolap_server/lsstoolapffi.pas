@@ -64,6 +64,7 @@ type
   TStoolapVersionFunc = function: PChar; cdecl;
   TStoolapOpenFunc = function(Dsn: PChar; var OutDb: PStoolapDB): cint; cdecl;
   TStoolapOpenInMemoryFunc = function(var OutDb: PStoolapDB): cint; cdecl;
+  TStoolapCloneFunc = function(Db: PStoolapDB; var OutDb: PStoolapDB): cint; cdecl;
   TStoolapCloseFunc = function(Db: PStoolapDB): cint; cdecl;
   TStoolapErrmsgFunc = function(Db: PStoolapDB): PChar; cdecl;
   TStoolapExecFunc = function(Db: PStoolapDB; Sql: PChar; RowsAffected: PInt64): cint; cdecl;
@@ -97,6 +98,7 @@ type
     FVersion: TStoolapVersionFunc;
     FOpen: TStoolapOpenFunc;
     FOpenInMemory: TStoolapOpenInMemoryFunc;
+    FClone: TStoolapCloneFunc;
     FClose: TStoolapCloseFunc;
     FErrmsg: TStoolapErrmsgFunc;
     FExec: TStoolapExecFunc;
@@ -125,6 +127,7 @@ type
     function Version: string;
     property Open: TStoolapOpenFunc read FOpen;
     property OpenInMemory: TStoolapOpenInMemoryFunc read FOpenInMemory;
+    property Clone: TStoolapCloneFunc read FClone;
     property Close: TStoolapCloseFunc read FClose;
     property Errmsg: TStoolapErrmsgFunc read FErrmsg;
     property Exec: TStoolapExecFunc read FExec;
@@ -177,6 +180,7 @@ begin
   RequireSymbol('stoolap_version', Pointer(FVersion));
   RequireSymbol('stoolap_open', Pointer(FOpen));
   RequireSymbol('stoolap_open_in_memory', Pointer(FOpenInMemory));
+  RequireSymbol('stoolap_clone', Pointer(FClone));
   RequireSymbol('stoolap_close', Pointer(FClose));
   RequireSymbol('stoolap_errmsg', Pointer(FErrmsg));
   RequireSymbol('stoolap_exec', Pointer(FExec));

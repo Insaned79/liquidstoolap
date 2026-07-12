@@ -561,6 +561,7 @@ health_requires_auth = false
 [stoolap]
 database_path = ./data/stoolap.db
 read_only = false
+sql_worker_count = 0
 busy_timeout_ms = 5000
 startup_check = true
 
@@ -600,6 +601,9 @@ default_output = json
 - если `auth.enabled = true`, сервер **не должен стартовать**, если не задан либо `password_file`, либо `static_tokens_file`;
 - `password_file` должен указывать на файл с секретом, не хранить пароль inline в коммитабельном `config.ini`;
 - при `health_requires_auth = false` endpoint `/health` остаётся публичным;
+- `max_concurrent_requests` ограничивает in-flight HTTP-запросы, а `sql_worker_count` ограничивает реальные параллельные SQL-исполнители;
+- при `sql_worker_count = 0` сервер должен использовать значение `max_concurrent_requests`;
+- SQL-конкурентность должна реализовываться через `stoolap_clone()`: один исходный Stoolap handle открывает базу, worker handles являются клонами и каждый SQL-запрос эксклюзивно использует один worker handle;
 - `sql_log = false` по умолчанию, чтобы не утекали чувствительные данные;
 - `redact_sql_params = true` по умолчанию.
 
@@ -617,6 +621,7 @@ default_output = json
 | `server` | `health_requires_auth` | `false` | требовать ли токен для `/health` |
 | `stoolap` | `database_path` | `./data/stoolap.db` | путь к backend-данным |
 | `stoolap` | `read_only` | `false` | режим только чтение |
+| `stoolap` | `sql_worker_count` | `0` | количество параллельных Stoolap worker handles; `0` означает `max_concurrent_requests` |
 | `stoolap` | `busy_timeout_ms` | `5000` | default backend execution timeout для SQL-запросов без явного `timeout_ms` |
 | `stoolap` | `startup_check` | `true` | проверять backend на старте |
 | `auth` | `enabled` | `true` | требовать auth на API |

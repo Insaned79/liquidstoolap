@@ -36,6 +36,7 @@ begin
   AssertTrue(Config.Server.Port = 8321, 'default port');
   AssertTrue(Config.Server.BasePath = '/', 'default base path');
   AssertTrue(Config.Auth.Enabled, 'auth enabled by default');
+  AssertTrue(Config.Stoolap.SqlWorkerCount = 0, 'default sql worker count is auto');
   AssertTrue(Config.Stoolap.StartupCheck, 'startup check enabled by default');
 end;
 
@@ -68,6 +69,7 @@ begin
   AssertTrue(LoadConfig(FileName, Config, ErrorMessage), 'valid config loads');
   AssertTrue(Config.Server.Port = 9001, 'loaded port');
   AssertTrue(Config.Server.BasePath = '/api/v1', 'loaded base path normalized');
+  AssertTrue(Config.Stoolap.SqlWorkerCount = Config.Server.MaxConcurrentRequests, 'auto sql worker count resolves to max concurrent requests');
   AssertTrue(not Config.Auth.Enabled, 'loaded auth disabled');
 
   WriteTextFile(FileName,
@@ -99,6 +101,16 @@ begin
 
   AssertTrue(not LoadConfig(FileName, Config, ErrorMessage), 'invalid busy timeout fails');
   AssertTrue(Pos('stoolap.busy_timeout_ms', ErrorMessage) > 0, 'busy timeout error message');
+
+  WriteTextFile(FileName,
+    '[stoolap]' + LineEnding +
+    'sql_worker_count = -1' + LineEnding +
+    LineEnding +
+    '[auth]' + LineEnding +
+    'enabled = false' + LineEnding);
+
+  AssertTrue(not LoadConfig(FileName, Config, ErrorMessage), 'invalid sql worker count fails');
+  AssertTrue(Pos('stoolap.sql_worker_count', ErrorMessage) > 0, 'sql worker count error message');
 
   WriteTextFile(FileName,
     '[observability]' + LineEnding +

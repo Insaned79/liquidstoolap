@@ -97,6 +97,8 @@ grep -q '"kind" : "command"' <<<"$command_response"
 
 python3 - <<PY
 import json
+import threading
+import time
 import urllib.request
 
 base = "http://127.0.0.1:$PORT"
@@ -133,6 +135,28 @@ timestamp_result = post({"sql": "SELECT ts FROM timestamp_t"})["result"]
 assert timestamp_result["types"] == ["TIMESTAMP"], timestamp_result
 timestamp_value = timestamp_result["rows"][0]["values"][0]
 assert timestamp_value == "2026-01-02T03:04:05.000000000Z", timestamp_value
+
+long_done = threading.Event()
+long_error = []
+
+def long_query():
+    try:
+        post({"sql": "SELECT SLEEP(2)", "timeout_ms": 5000})
+    except Exception as exc:
+        long_error.append(repr(exc))
+    finally:
+        long_done.set()
+
+thread = threading.Thread(target=long_query)
+thread.start()
+time.sleep(0.2)
+started = time.monotonic()
+short_result = post({"sql": "SELECT 123 AS ok", "timeout_ms": 3000})
+elapsed = time.monotonic() - started
+assert short_result["result"]["rows"][0]["values"] == [123], short_result
+assert elapsed < 1.5, f"short query was blocked behind long query for {elapsed:.3f}s"
+assert long_done.wait(6), "long query did not finish"
+assert not long_error, long_error
 PY
 
 multi_status="$(curl -sS -o /tmp/liquidstoolap-multi.json -w '%{http_code}' \
@@ -394,6 +418,76 @@ busy_timeout_status="$(curl -sS -o /tmp/liquidstoolap-busy-timeout.json -w '%{ht
   -d '{"sql":"SELECT SUM(value) FROM generate_series(1, 200000000) AS g(value)"}')"
 test "$busy_timeout_status" = "504"
 grep -q '"code" : "backend_timeout"' /tmp/liquidstoolap-busy-timeout.json
+
+cleanup
+trap - EXIT
+
+SINGLE_WORKER_CONFIG="$ROOT_DIR/build/single-worker.ini"
+sed \
+  -e "s#port = 8321#port = $PORT#" \
+  -e "s#password_file =#password_file = $PASSWORD_FILE#" \
+  -e "s#database_path = ./data/stoolap.db#database_path = memory://#" \
+  -e "s#sql_worker_count = 0#sql_worker_count = 1#" \
+  ../config/config.example.ini > "$SINGLE_WORKER_CONFIG"
+
+./build/liquidstoolap check-config --config "$SINGLE_WORKER_CONFIG" >/dev/null
+./build/liquidstoolap serve --config "$SINGLE_WORKER_CONFIG" > "$LOG_FILE" 2>&1 &
+SERVER_PID=$!
+trap cleanup EXIT
+for _ in $(seq 1 50); do
+  if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+
+single_worker_token_response="$(curl -fsS \
+  -X POST "http://127.0.0.1:$PORT/auth/token" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"secret"}')"
+single_worker_token="$(sed -n 's/.*"access_token" : "\([^"]*\)".*/\1/p' <<<"$single_worker_token_response")"
+test -n "$single_worker_token"
+
+python3 - <<PY
+import json
+import threading
+import time
+import urllib.error
+import urllib.request
+
+base = "http://127.0.0.1:$PORT"
+token = "$single_worker_token"
+
+def post(payload):
+    req = urllib.request.Request(
+        base + "/sql",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+long_done = threading.Event()
+
+def long_query():
+    try:
+        post({"sql": "SELECT SLEEP(2)", "timeout_ms": 5000})
+    finally:
+        long_done.set()
+
+thread = threading.Thread(target=long_query)
+thread.start()
+time.sleep(0.2)
+try:
+    post({"sql": "SELECT 124 AS blocked", "timeout_ms": 300})
+    raise AssertionError("single SQL worker did not serialize concurrent SQL requests")
+except urllib.error.HTTPError as exc:
+    body = json.loads(exc.read().decode("utf-8"))
+    assert exc.code == 504, (exc.code, body)
+    assert body["error"]["code"] == "backend_timeout", body
+assert long_done.wait(6), "single-worker long query did not finish"
+PY
 
 cleanup
 trap - EXIT

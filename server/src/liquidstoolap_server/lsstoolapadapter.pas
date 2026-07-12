@@ -10,16 +10,26 @@ uses
 type
   EStoolapAdapterError = class(Exception);
   EStoolapTimeoutError = class(EStoolapAdapterError);
+  EStoolapPoolTimeoutError = class(EStoolapTimeoutError);
 
   TStoolapAdapter = class
   private
     FLibrary: TStoolapLibrary;
     FDb: PStoolapDB;
+    FPool: array of PStoolapDB;
+    FPoolBusy: array of Boolean;
+    FPoolSize: Integer;
+    FPoolLock: TRTLCriticalSection;
+    FOpenLock: TRTLCriticalSection;
     FConfig: TStoolapConfig;
     function Dsn: string;
-    function LastDbError: string;
+    function EffectivePoolSize: Integer;
+    function LastDbError(Db: PStoolapDB): string;
     function IsQuerySql(const Sql: string): Boolean;
     function RowsToJson(Rows: PStoolapRows): TJSONObject;
+    function AcquireDb(const TimeoutMs: Int64; out PoolIndex: Integer): PStoolapDB;
+    procedure ReleaseDb(const PoolIndex: Integer);
+    procedure OpenUnlocked;
   public
     constructor Create(const Config: TStoolapConfig);
     destructor Destroy; override;
@@ -27,8 +37,8 @@ type
     procedure Close;
     procedure StartupCheck;
     function ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
-    function QueryJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
-    function CommandJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+    function QueryJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+    function CommandJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
     function Version: string;
   end;
 
@@ -81,12 +91,17 @@ begin
   inherited Create;
   FConfig := Config;
   FDb := nil;
+  FPoolSize := 0;
+  InitCriticalSection(FPoolLock);
+  InitCriticalSection(FOpenLock);
 end;
 
 destructor TStoolapAdapter.Destroy;
 begin
   Close;
   FLibrary.Free;
+  DoneCriticalSection(FOpenLock);
+  DoneCriticalSection(FPoolLock);
   inherited Destroy;
 end;
 
@@ -102,14 +117,21 @@ begin
   Result := 'file://' + ExpandFileName(FConfig.DatabasePath);
 end;
 
-function TStoolapAdapter.LastDbError: string;
+function TStoolapAdapter.EffectivePoolSize: Integer;
+begin
+  Result := FConfig.SqlWorkerCount;
+  if Result <= 0 then
+    Result := 1;
+end;
+
+function TStoolapAdapter.LastDbError(Db: PStoolapDB): string;
 var
   MessagePtr: PChar;
 begin
   Result := '';
   if Assigned(FLibrary) and Assigned(FLibrary.Errmsg) then
   begin
-    MessagePtr := FLibrary.Errmsg(FDb);
+    MessagePtr := FLibrary.Errmsg(Db);
     if MessagePtr <> nil then
       Result := Utf8StringFromNullTerminated(MessagePtr);
   end;
@@ -124,9 +146,10 @@ begin
     (Pos('SHOW', S) = 1) or (Pos('EXPLAIN', S) = 1);
 end;
 
-procedure TStoolapAdapter.Open;
+procedure TStoolapAdapter.OpenUnlocked;
 var
   Status: Integer;
+  I: Integer;
   DsnBytes: RawByteString;
 begin
   if FLibrary = nil then
@@ -144,15 +167,101 @@ begin
   end;
 
   if Status <> STOOLAP_OK then
-    raise EStoolapAdapterError.Create('failed to open Stoolap database: ' + LastDbError);
+    raise EStoolapAdapterError.Create('failed to open Stoolap database: ' + LastDbError(FDb));
+
+  FPoolSize := EffectivePoolSize;
+  SetLength(FPool, FPoolSize);
+  SetLength(FPoolBusy, FPoolSize);
+  FPool[0] := FDb;
+  FPoolBusy[0] := False;
+  for I := 1 to FPoolSize - 1 do
+  begin
+    FPool[I] := nil;
+    Status := FLibrary.Clone(FDb, FPool[I]);
+    if Status <> STOOLAP_OK then
+      raise EStoolapAdapterError.Create('failed to clone Stoolap database handle: ' + LastDbError(FDb));
+    FPoolBusy[I] := False;
+  end;
+end;
+
+procedure TStoolapAdapter.Open;
+begin
+  if FDb <> nil then
+    Exit;
+  EnterCriticalSection(FOpenLock);
+  try
+    OpenUnlocked;
+  finally
+    LeaveCriticalSection(FOpenLock);
+  end;
 end;
 
 procedure TStoolapAdapter.Close;
+var
+  I: Integer;
 begin
-  if (FLibrary <> nil) and (FDb <> nil) then
-  begin
-    FLibrary.Close(FDb);
+  EnterCriticalSection(FOpenLock);
+  try
+    if FLibrary <> nil then
+    begin
+      for I := High(FPool) downto 0 do
+        if FPool[I] <> nil then
+        begin
+          FLibrary.Close(FPool[I]);
+          FPool[I] := nil;
+        end;
+    end;
+    SetLength(FPool, 0);
+    SetLength(FPoolBusy, 0);
+    FPoolSize := 0;
     FDb := nil;
+  finally
+    LeaveCriticalSection(FOpenLock);
+  end;
+end;
+
+function TStoolapAdapter.AcquireDb(const TimeoutMs: Int64; out PoolIndex: Integer): PStoolapDB;
+var
+  StartedAt: TDateTime;
+  I: Integer;
+begin
+  Open;
+  StartedAt := Now;
+  PoolIndex := -1;
+  Result := nil;
+
+  while True do
+  begin
+    EnterCriticalSection(FPoolLock);
+    try
+      for I := 0 to FPoolSize - 1 do
+        if (FPool[I] <> nil) and (not FPoolBusy[I]) then
+        begin
+          FPoolBusy[I] := True;
+          PoolIndex := I;
+          Result := FPool[I];
+          Exit;
+        end;
+    finally
+      LeaveCriticalSection(FPoolLock);
+    end;
+
+    if MilliSecondsBetween(Now, StartedAt) >= TimeoutMs then
+      raise EStoolapPoolTimeoutError.Create('SQL worker pool wait exceeded timeout_ms');
+    Sleep(1);
+  end;
+end;
+
+procedure TStoolapAdapter.ReleaseDb(const PoolIndex: Integer);
+begin
+  if PoolIndex < 0 then
+    Exit;
+  EnterCriticalSection(FPoolLock);
+  try
+    if PoolIndex <= High(FPoolBusy) then
+      FPoolBusy[PoolIndex] := False;
+  finally
+    LeaveCriticalSection(FPoolLock);
   end;
 end;
 
@@ -165,7 +274,7 @@ begin
   Rows := nil;
   Status := FLibrary.Query(FDb, 'SELECT 1', Rows);
   if Status <> STOOLAP_OK then
-    raise EStoolapAdapterError.Create('Stoolap startup query failed: ' + LastDbError);
+    raise EStoolapAdapterError.Create('Stoolap startup query failed: ' + LastDbError(FDb));
   try
     Status := FLibrary.RowsNext(Rows);
     if Status <> STOOLAP_ROW then
@@ -470,7 +579,7 @@ begin
   raise EStoolapAdapterError.Create(Prefix + MessageText);
 end;
 
-function TStoolapAdapter.QueryJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+function TStoolapAdapter.QueryJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
 var
   Rows: PStoolapRows;
   Status: Integer;
@@ -479,7 +588,6 @@ var
   TextValues: array of RawByteString;
   SqlBytes: RawByteString;
 begin
-  Open;
   SqlBytes := Utf8Bytes(Sql);
   Rows := nil;
   SetLength(NamedParams, 0);
@@ -491,13 +599,13 @@ begin
     SetLength(Names, Params.Count);
     SetLength(TextValues, Params.Count);
     BuildNamedParams(Params, NamedParams, Names, TextValues);
-    Status := FLibrary.QueryNamedTimeout(FDb, PChar(SqlBytes), @NamedParams[0], Length(NamedParams), TimeoutMs, Rows);
+    Status := FLibrary.QueryNamedTimeout(Db, PChar(SqlBytes), @NamedParams[0], Length(NamedParams), TimeoutMs, Rows);
   end
   else
-    Status := FLibrary.QueryNamedTimeout(FDb, PChar(SqlBytes), nil, 0, TimeoutMs, Rows);
+    Status := FLibrary.QueryNamedTimeout(Db, PChar(SqlBytes), nil, 0, TimeoutMs, Rows);
 
   if Status <> STOOLAP_OK then
-    RaiseBackendError('Stoolap query failed: ', LastDbError);
+    RaiseBackendError('Stoolap query failed: ', LastDbError(Db));
 
   try
     Result := RowsToJson(Rows);
@@ -507,23 +615,22 @@ begin
   end;
 end;
 
-function TStoolapAdapter.CommandJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+function TStoolapAdapter.CommandJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
 var
   Status: Integer;
   RowsAffected: Int64;
   SqlBytes: RawByteString;
   EffectiveSql: string;
 begin
-  Open;
   EffectiveSql := Sql;
   if (Params <> nil) and (Params.Count > 0) then
     EffectiveSql := MaterializeNamedParams(Sql, Params);
   SqlBytes := Utf8Bytes(EffectiveSql);
   RowsAffected := 0;
-  Status := FLibrary.ExecNamedTimeout(FDb, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
+  Status := FLibrary.ExecNamedTimeout(Db, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
 
   if Status <> STOOLAP_OK then
-    RaiseBackendError('Stoolap exec failed: ', LastDbError);
+    RaiseBackendError('Stoolap exec failed: ', LastDbError(Db));
 
   Result := TJSONObject.Create;
   Result.Add('kind', 'command');
@@ -532,13 +639,27 @@ begin
 end;
 
 function TStoolapAdapter.ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+var
+  Db: PStoolapDB;
+  PoolIndex: Integer;
+  StartedAt: TDateTime;
+  RemainingTimeoutMs: Int64;
 begin
-  if IsQuerySql(Sql) then
-    Result := QueryJson(Sql, Params, TimeoutMs)
-  else if FConfig.ReadOnly then
-    raise EStoolapAdapterError.Create('Stoolap database is configured read-only; SQL commands are not allowed')
-  else
-    Result := CommandJson(Sql, Params, TimeoutMs);
+  StartedAt := Now;
+  Db := AcquireDb(TimeoutMs, PoolIndex);
+  try
+    RemainingTimeoutMs := TimeoutMs - MilliSecondsBetween(Now, StartedAt);
+    if RemainingTimeoutMs < 1 then
+      raise EStoolapPoolTimeoutError.Create('SQL worker pool wait exceeded timeout_ms');
+    if IsQuerySql(Sql) then
+      Result := QueryJson(Db, Sql, Params, RemainingTimeoutMs)
+    else if FConfig.ReadOnly then
+      raise EStoolapAdapterError.Create('Stoolap database is configured read-only; SQL commands are not allowed')
+    else
+      Result := CommandJson(Db, Sql, Params, RemainingTimeoutMs);
+  finally
+    ReleaseDb(PoolIndex);
+  end;
 end;
 
 function TStoolapAdapter.Version: string;

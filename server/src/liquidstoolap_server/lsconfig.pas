@@ -31,6 +31,7 @@ type
     LibraryPath: string;
     DatabasePath: string;
     ReadOnly: Boolean;
+    SqlWorkerCount: Integer;
     BusyTimeoutMs: Integer;
     StartupCheck: Boolean;
   end;
@@ -118,6 +119,7 @@ begin
   Config.Stoolap.LibraryPath := './.cargo-target/release/libstoolap.so';
   Config.Stoolap.DatabasePath := './data/stoolap.db';
   Config.Stoolap.ReadOnly := False;
+  Config.Stoolap.SqlWorkerCount := 0;
   Config.Stoolap.BusyTimeoutMs := 5000;
   Config.Stoolap.StartupCheck := True;
   Config.Timeouts.RequestTimeoutMs := 30000;
@@ -185,6 +187,7 @@ begin
       Config.Stoolap.LibraryPath := Ini.ReadString('stoolap', 'library_path', Config.Stoolap.LibraryPath);
       Config.Stoolap.DatabasePath := Ini.ReadString('stoolap', 'database_path', Config.Stoolap.DatabasePath);
       Config.Stoolap.ReadOnly := ReadBoolText(Ini, 'stoolap', 'read_only', Config.Stoolap.ReadOnly);
+      Config.Stoolap.SqlWorkerCount := Ini.ReadInteger('stoolap', 'sql_worker_count', Config.Stoolap.SqlWorkerCount);
       Config.Stoolap.BusyTimeoutMs := Ini.ReadInteger('stoolap', 'busy_timeout_ms', Config.Stoolap.BusyTimeoutMs);
       Config.Stoolap.StartupCheck := ReadBoolText(Ini, 'stoolap', 'startup_check', Config.Stoolap.StartupCheck);
       Config.Timeouts.RequestTimeoutMs := Ini.ReadInteger('timeouts', 'request_timeout_ms', Config.Timeouts.RequestTimeoutMs);
@@ -229,6 +232,9 @@ begin
     Exit(False);
   end;
 
+  if Config.Stoolap.SqlWorkerCount = 0 then
+    Config.Stoolap.SqlWorkerCount := Config.Server.MaxConcurrentRequests;
+
   if Pos('?', Config.Server.BasePath) > 0 then
   begin
     ErrorMessage := 'server.base_path must be a path, not a URL or query string';
@@ -250,6 +256,12 @@ begin
   if Config.Stoolap.BusyTimeoutMs <= 0 then
   begin
     ErrorMessage := 'stoolap.busy_timeout_ms must be positive';
+    Exit(False);
+  end;
+
+  if Config.Stoolap.SqlWorkerCount < 0 then
+  begin
+    ErrorMessage := 'stoolap.sql_worker_count must be >= 0';
     Exit(False);
   end;
 

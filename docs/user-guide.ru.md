@@ -81,6 +81,8 @@ password_file = ./secrets/admin.password
 
 `[server].max_concurrent_requests` ограничивает количество HTTP-запросов в обработке. Значения больше `1` включают threaded HTTP server Free Pascal; запросы сверх лимита получают `503`.
 
+`[stoolap].sql_worker_count` управляет параллелизмом выполнения SQL. Сервер открывает один Stoolap database handle и создаёт рабочие cloned handles через `stoolap_clone()`. Каждый SQL-запрос эксклюзивно использует один handle, как требует C API Stoolap. Значение по умолчанию `0` означает «использовать `[server].max_concurrent_requests`».
+
 Установите `[stoolap].read_only = true`, если HTTP-слой должен отклонять SQL-команды вроде `CREATE`, `INSERT`, `UPDATE` и `DELETE`. Read-запросы продолжают работать.
 
 ## Справочник конфигурации
@@ -107,6 +109,7 @@ password_file = ./secrets/admin.password
 | `library_path` | `../.cargo-target/release/libstoolap.so` | Путь к Stoolap shared library. |
 | `database_path` | `./data/stoolap.db` | `memory://` или путь к persistent database. |
 | `read_only` | `false` | Отклоняет non-query SQL commands, если true. |
+| `sql_worker_count` | `0` | Количество parallel SQL worker handles; `0` означает `max_concurrent_requests`. |
 | `busy_timeout_ms` | `5000` | Default backend SQL execution timeout, если request не содержит `timeout_ms`. |
 | `startup_check` | `true` | Выполняет `SELECT 1` при startup readiness initialization. |
 

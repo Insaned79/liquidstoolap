@@ -15,7 +15,6 @@ type
     FServer: TFPHTTPServer;
     FActiveRequests: Integer;
     FRequestLock: TRTLCriticalSection;
-    FAdapterLock: TRTLCriticalSection;
     FAuthLock: TRTLCriticalSection;
     FStartTime: TDateTime;
     FReady: Boolean;
@@ -78,7 +77,6 @@ begin
   FConfig := Config;
   FActiveRequests := 0;
   InitCriticalSection(FRequestLock);
-  InitCriticalSection(FAdapterLock);
   InitCriticalSection(FAuthLock);
   FStartTime := Now;
   FReady := True;
@@ -86,6 +84,8 @@ begin
   FNotReadyReason := '';
   try
     FAuth := TAuthService.Create(FConfig.Auth);
+    if FConfig.Stoolap.SqlWorkerCount = 0 then
+      FConfig.Stoolap.SqlWorkerCount := FConfig.Server.MaxConcurrentRequests;
     FAdapter := TStoolapAdapter.Create(FConfig.Stoolap);
     if FConfig.Stoolap.StartupCheck then
       FAdapter.StartupCheck;
@@ -110,7 +110,6 @@ begin
   FAdapter.Free;
   FServer.Free;
   DoneCriticalSection(FAuthLock);
-  DoneCriticalSection(FAdapterLock);
   DoneCriticalSection(FRequestLock);
   inherited Destroy;
 end;
@@ -510,12 +509,7 @@ begin
 
     StartedAt := Now;
     try
-      EnterCriticalSection(FAdapterLock);
-      try
-        ResultObject := FAdapter.ExecuteJson(Sql, ParamsObject, TimeoutMs);
-      finally
-        LeaveCriticalSection(FAdapterLock);
-      end;
+      ResultObject := FAdapter.ExecuteJson(Sql, ParamsObject, TimeoutMs);
     except
       on E: EStoolapLibraryError do
       begin

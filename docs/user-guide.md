@@ -81,6 +81,8 @@ Use `memory://` for an ephemeral database. Use a filesystem path such as `./data
 
 `[server].max_concurrent_requests` limits the number of in-flight HTTP requests. Values above `1` enable the threaded Free Pascal HTTP server; requests above the configured limit receive `503`.
 
+`[stoolap].sql_worker_count` controls SQL execution parallelism. The server opens one Stoolap database handle and creates cloned handles with `stoolap_clone()` for worker use. Each SQL request uses one handle exclusively, as required by Stoolap's C API. The default value `0` means "use `[server].max_concurrent_requests`".
+
 Set `[stoolap].read_only = true` when the HTTP layer must reject SQL commands such as `CREATE`, `INSERT`, `UPDATE`, and `DELETE`. Read queries still execute normally.
 
 ## Configuration Reference
@@ -107,6 +109,7 @@ Set `[stoolap].read_only = true` when the HTTP layer must reject SQL commands su
 | `library_path` | `../.cargo-target/release/libstoolap.so` | Stoolap shared library path. |
 | `database_path` | `./data/stoolap.db` | `memory://` or persistent filesystem path. |
 | `read_only` | `false` | Rejects non-query SQL commands when true. |
+| `sql_worker_count` | `0` | Parallel SQL worker handles; `0` means `max_concurrent_requests`. |
 | `busy_timeout_ms` | `5000` | Default backend SQL execution timeout when request `timeout_ms` is absent. |
 | `startup_check` | `true` | Runs `SELECT 1` during startup readiness initialization. |
 
