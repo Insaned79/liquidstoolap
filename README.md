@@ -63,11 +63,15 @@ It is intentionally not an ORM, BI server, migration framework, or general data 
 
 #### Docker On x86_64
 
-Build the local image from the latest published x86_64 release binaries:
+Get the repository and run Docker from its root directory:
 
 ```bash
+git clone https://github.com/Insaned79/liquidstoolap.git
+cd liquidstoolap
 docker build -t liquidstoolap:latest .
 ```
+
+Run `docker build ... .` only from the repository root. The repository contains `.dockerignore`, so the Docker build context stays small; running the same command from your home directory will send unrelated local files to Docker.
 
 The Dockerfile does not build Rust or Free Pascal code. It resolves the latest GitHub release, downloads the matching `liquidstoolap-server-<version>-linux-x86_64.tar.gz` asset, and places it into a small glibc-based runtime image. To pin a version, pass `--build-arg LIQUID_STOOLAP_VERSION=0.1.0`.
 
@@ -326,11 +330,15 @@ Liquid Stoolap даёт локальным automation-сценариям, скр
 
 #### Docker на x86_64
 
-Соберите локальный image из latest опубликованных x86_64 release binaries:
+Получите репозиторий и запускайте Docker из его корня:
 
 ```bash
+git clone https://github.com/Insaned79/liquidstoolap.git
+cd liquidstoolap
 docker build -t liquidstoolap:latest .
 ```
+
+Запускайте `docker build ... .` только из корня репозитория. В репозитории есть `.dockerignore`, поэтому Docker build context остаётся маленьким; если запустить ту же команду из домашнего каталога, Docker начнёт отправлять посторонние локальные файлы.
 
 Dockerfile не собирает Rust или Free Pascal код. Он определяет latest GitHub release, скачивает подходящий asset `liquidstoolap-server-<version>-linux-x86_64.tar.gz` и кладёт его в небольшой glibc-based runtime image. Чтобы зафиксировать версию, передайте `--build-arg LIQUID_STOOLAP_VERSION=0.1.0`.
 
