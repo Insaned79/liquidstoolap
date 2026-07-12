@@ -61,6 +61,64 @@ It is intentionally not an ORM, BI server, migration framework, or general data 
 
 ### Quick Start
 
+#### Docker On x86_64
+
+Build the local image from the latest published x86_64 release binaries:
+
+```bash
+docker build -t liquidstoolap:latest .
+```
+
+The Dockerfile does not build Rust or Free Pascal code. It resolves the latest GitHub release, downloads the matching `liquidstoolap-server-<version>-linux-x86_64.tar.gz` asset, and places it into a small glibc-based runtime image. To pin a version, pass `--build-arg LIQUID_STOOLAP_VERSION=0.1.0`.
+
+Create a mounted data directory with the Docker config and password file:
+
+```bash
+mkdir -p liquid-data
+docker run --rm liquidstoolap:latest \
+  cat /opt/liquidstoolap/config.example.ini > liquid-data/config.ini
+printf 'secret\n' > liquid-data/admin.password
+```
+
+The Docker config keeps all mutable state on the mounted volume:
+
+- `/data/config.ini` - server config.
+- `/data/admin.password` - password used by `POST /auth/token`.
+- `/data/stoolap.db` - persistent Stoolap database directory/file.
+
+Validate the mounted config:
+
+```bash
+docker run --rm \
+  -v "$PWD/liquid-data:/data" \
+  liquidstoolap:latest \
+  liquidstoolap check-config --config /data/config.ini
+```
+
+Start the server:
+
+```bash
+docker run -d \
+  --name liquidstoolap \
+  -p 8321:8321 \
+  -v "$PWD/liquid-data:/data" \
+  liquidstoolap:latest
+```
+
+Check it:
+
+```bash
+curl -sS http://127.0.0.1:8321/health
+```
+
+Stop and remove the container:
+
+```bash
+docker rm -f liquidstoolap
+```
+
+#### Build From Source
+
 Build Stoolap with C FFI support:
 
 ```bash
@@ -265,6 +323,64 @@ Liquid Stoolap даёт локальным automation-сценариям, скр
 | `docs/SRS.md` | Software requirements specification. |
 
 ### Быстрый старт
+
+#### Docker на x86_64
+
+Соберите локальный image из latest опубликованных x86_64 release binaries:
+
+```bash
+docker build -t liquidstoolap:latest .
+```
+
+Dockerfile не собирает Rust или Free Pascal код. Он определяет latest GitHub release, скачивает подходящий asset `liquidstoolap-server-<version>-linux-x86_64.tar.gz` и кладёт его в небольшой glibc-based runtime image. Чтобы зафиксировать версию, передайте `--build-arg LIQUID_STOOLAP_VERSION=0.1.0`.
+
+Создайте mounted data directory с Docker config и password file:
+
+```bash
+mkdir -p liquid-data
+docker run --rm liquidstoolap:latest \
+  cat /opt/liquidstoolap/config.example.ini > liquid-data/config.ini
+printf 'secret\n' > liquid-data/admin.password
+```
+
+Docker config хранит всё изменяемое состояние на mounted volume:
+
+- `/data/config.ini` - server config.
+- `/data/admin.password` - password для `POST /auth/token`.
+- `/data/stoolap.db` - persistent Stoolap database directory/file.
+
+Проверьте mounted config:
+
+```bash
+docker run --rm \
+  -v "$PWD/liquid-data:/data" \
+  liquidstoolap:latest \
+  liquidstoolap check-config --config /data/config.ini
+```
+
+Запустите сервер:
+
+```bash
+docker run -d \
+  --name liquidstoolap \
+  -p 8321:8321 \
+  -v "$PWD/liquid-data:/data" \
+  liquidstoolap:latest
+```
+
+Проверьте:
+
+```bash
+curl -sS http://127.0.0.1:8321/health
+```
+
+Остановить и удалить container:
+
+```bash
+docker rm -f liquidstoolap
+```
+
+#### Сборка из исходников
 
 Соберите Stoolap с C FFI:
 
