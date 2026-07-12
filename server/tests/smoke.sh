@@ -77,6 +77,10 @@ grep -q '| 44 |' <<<"$cli_connect_response"
 cli_connect_login_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin --password-file "$PASSWORD_FILE" -e "SELECT 440 AS id")"
 grep -q '| 440 |' <<<"$cli_connect_login_response"
 
+cli_connect_prompt_password_response="$(printf 'secret\n' | ./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin -e "SELECT 441 AS id")"
+grep -q 'Password:' <<<"$cli_connect_prompt_password_response"
+grep -q '| 441 |' <<<"$cli_connect_prompt_password_response"
+
 cli_connect_json_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token" -e "SELECT 45 AS id" --format json)"
 grep -q '"values" : \[45\]' <<<"$cli_connect_json_response"
 

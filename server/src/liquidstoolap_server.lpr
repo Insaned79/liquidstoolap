@@ -3,10 +3,27 @@ program liquidstoolap_server;
 {$mode objfpc}{$H+}
 
 uses
-  cthreads, cwstring, SysUtils, Classes, BaseUnix, fphttpclient, fpjson, jsonparser, lsconfig, lshttpserver, lsversion;
+  cthreads, cwstring, SysUtils, Classes, BaseUnix, DynLibs, ctypes, termio,
+  fphttpclient, fpjson, jsonparser, lsconfig, lshttpserver, lsversion;
 
 var
   ShutdownRequested: Boolean = False;
+
+type
+  TReadlineFunc = function(Prompt: PChar): PChar; cdecl;
+  TAddHistoryFunc = procedure(Line: PChar); cdecl;
+  TReadHistoryFunc = function(FileName: PChar): cint; cdecl;
+  TWriteHistoryFunc = function(FileName: PChar): cint; cdecl;
+
+var
+  ReadlineHandle: TLibHandle = NilHandle;
+  ReadlineFunc: TReadlineFunc = nil;
+  AddHistoryFunc: TAddHistoryFunc = nil;
+  ReadHistoryFunc: TReadHistoryFunc = nil;
+  WriteHistoryFunc: TWriteHistoryFunc = nil;
+
+function IsATTY(Fd: cint): cint; cdecl; external 'c' name 'isatty';
+procedure CFree(P: Pointer); cdecl; external 'c' name 'free';
 
 procedure ConfigureTextEncoding;
 begin
@@ -76,7 +93,7 @@ begin
   WriteLn('  liquidstoolap health --url URL');
   WriteLn('  liquidstoolap token --url URL --username USER --password-file PATH');
   WriteLn('  liquidstoolap sql --url URL --token TOKEN --sql SQL [--param name=value]');
-  WriteLn('  liquidstoolap connect --url URL (--token TOKEN | --username USER --password-file PATH)');
+  WriteLn('  liquidstoolap connect --url URL (--token TOKEN | --username USER [--password-file PATH])');
   WriteLn('  liquidstoolap connect --url URL --token TOKEN -e SQL [--format table|json]');
 end;
 
@@ -97,6 +114,117 @@ begin
     Result := ArgValue(Name2, '');
   if Result = '' then
     Result := DefaultValue;
+end;
+
+function IsTerminalInput: Boolean;
+begin
+  Result := IsATTY(0) <> 0;
+end;
+
+function HistoryFileName: string;
+var
+  Home: string;
+begin
+  Home := GetEnvironmentVariable('HOME');
+  if Home = '' then
+    Exit('');
+  Result := IncludeTrailingPathDelimiter(Home) + '.liquidstoolap_history';
+end;
+
+procedure InitReadline;
+begin
+  if ReadlineHandle <> NilHandle then
+    Exit;
+  ReadlineHandle := LoadLibrary('libreadline.so.8');
+  if ReadlineHandle = NilHandle then
+    ReadlineHandle := LoadLibrary('libreadline.so');
+  if ReadlineHandle = NilHandle then
+    Exit;
+
+  Pointer(ReadlineFunc) := GetProcedureAddress(ReadlineHandle, 'readline');
+  Pointer(AddHistoryFunc) := GetProcedureAddress(ReadlineHandle, 'add_history');
+  Pointer(ReadHistoryFunc) := GetProcedureAddress(ReadlineHandle, 'read_history');
+  Pointer(WriteHistoryFunc) := GetProcedureAddress(ReadlineHandle, 'write_history');
+  if not Assigned(ReadlineFunc) then
+  begin
+    UnloadLibrary(ReadlineHandle);
+    ReadlineHandle := NilHandle;
+  end;
+end;
+
+procedure LoadShellHistory;
+var
+  FileName: RawByteString;
+begin
+  if Assigned(ReadHistoryFunc) and (HistoryFileName <> '') then
+  begin
+    FileName := RawByteString(HistoryFileName);
+    ReadHistoryFunc(PChar(FileName));
+  end;
+end;
+
+procedure SaveShellHistory;
+var
+  FileName: RawByteString;
+begin
+  if Assigned(WriteHistoryFunc) and (HistoryFileName <> '') then
+  begin
+    FileName := RawByteString(HistoryFileName);
+    WriteHistoryFunc(PChar(FileName));
+  end;
+end;
+
+function ReadShellLine(const Prompt: string; out Line: string): Boolean;
+var
+  PromptBytes: RawByteString;
+  LinePtr: PChar;
+begin
+  if IsTerminalInput and Assigned(ReadlineFunc) then
+  begin
+    PromptBytes := RawByteString(Prompt);
+    LinePtr := ReadlineFunc(PChar(PromptBytes));
+    if LinePtr = nil then
+      Exit(False);
+    try
+      Line := string(LinePtr);
+    finally
+      CFree(LinePtr);
+    end;
+    if (Trim(Line) <> '') and Assigned(AddHistoryFunc) then
+      AddHistoryFunc(PChar(RawByteString(Line)));
+    Exit(True);
+  end;
+
+  Write(Prompt);
+  if EOF(Input) then
+    Exit(False);
+  ReadLn(Line);
+  Result := True;
+end;
+
+function ReadPasswordFromTerminal(const Prompt: string): string;
+var
+  OldTerm: Termios;
+  NewTerm: Termios;
+  HasTerm: Boolean;
+begin
+  Write(Prompt);
+  HasTerm := IsTerminalInput and (TCGetAttr(0, OldTerm) = 0);
+  if HasTerm then
+  begin
+    NewTerm := OldTerm;
+    NewTerm.c_lflag := NewTerm.c_lflag and not ECHO;
+    TCSetAttr(0, TCSANOW, NewTerm);
+  end;
+  try
+    ReadLn(Result);
+  finally
+    if HasTerm then
+    begin
+      TCSetAttr(0, TCSANOW, OldTerm);
+      WriteLn;
+    end;
+  end;
 end;
 
 procedure Serve;
@@ -283,13 +411,16 @@ var
   StatusCode: Integer;
   Body: string;
   Data: TJSONData;
+  Password: string;
 begin
-  if PasswordFile = '' then
-    raise Exception.Create('--password-file is required when --token is not provided');
+  if PasswordFile <> '' then
+    Password := ReadFirstLine(PasswordFile)
+  else
+    Password := ReadPasswordFromTerminal('Password: ');
 
   Body := HttpPostJson(
     Url + '/auth/token',
-    '{"username":' + JsonString(Username) + ',"password":' + JsonString(ReadFirstLine(PasswordFile)) + '}',
+    '{"username":' + JsonString(Username) + ',"password":' + JsonString(Password) + '}',
     '',
     StatusCode
   );
@@ -679,57 +810,70 @@ begin
 
   WriteLn('Connected to ', Url);
   WriteLn('Enter SQL terminated by semicolon. Type .help for help.');
-  SqlBuffer := '';
-  while True do
+  if IsTerminalInput then
   begin
-    if SqlBuffer = '' then
-      Write('liquidstoolap> ')
-    else
-      Write('          ...> ');
-    if EOF(Input) then
-      Break;
-    ReadLn(Line);
-
-    if (SqlBuffer = '') and (Length(Trim(Line)) > 0) and (Trim(Line)[1] = '.') then
-    begin
-      Line := Trim(Line);
-      if (Line = '.quit') or (Line = '.exit') then
-        Break;
-      if Line = '.help' then
-      begin
-        PrintShellHelp;
-        Continue;
-      end;
-      if Pos('.format ', Line) = 1 then
-      begin
-        OutputFormat := Trim(Copy(Line, Length('.format ') + 1, MaxInt));
-        if (OutputFormat <> 'table') and (OutputFormat <> 'json') then
-          WriteLn('format must be table or json')
-        else
-          WriteLn('format set to ', OutputFormat);
-        Continue;
-      end;
-      WriteLn('unknown command: ', Line);
-      Continue;
-    end;
-
-    if (SqlBuffer = '') and (Trim(Line) = '\q') then
-      Break;
-    if Trim(Line) = '' then
-      Continue;
-
-    if SqlBuffer <> '' then
-      SqlBuffer := SqlBuffer + LineEnding;
-    SqlBuffer := SqlBuffer + Line;
-
-    if (Trim(SqlBuffer) <> '') and (Trim(SqlBuffer)[Length(Trim(SqlBuffer))] = ';') then
-    begin
-      ExitCode := ExecuteSqlForCli(Url, Token, SqlBuffer, OutputFormat);
-      if ExitCode <> 0 then
-        WriteLn(StdErr, 'SQL failed with exit code ', ExitCode);
-      SqlBuffer := '';
-    end;
+    InitReadline;
+    LoadShellHistory;
   end;
+  SqlBuffer := '';
+  try
+    while True do
+    begin
+      if SqlBuffer = '' then
+      begin
+        if not ReadShellLine('liquidstoolap> ', Line) then
+          Break;
+      end
+      else
+      begin
+        if not ReadShellLine('          ...> ', Line) then
+          Break;
+      end;
+
+      if (SqlBuffer = '') and (Length(Trim(Line)) > 0) and (Trim(Line)[1] = '.') then
+      begin
+        Line := Trim(Line);
+        if (Line = '.quit') or (Line = '.exit') then
+          Break;
+        if Line = '.help' then
+        begin
+          PrintShellHelp;
+          Continue;
+        end;
+        if Pos('.format ', Line) = 1 then
+        begin
+          OutputFormat := Trim(Copy(Line, Length('.format ') + 1, MaxInt));
+          if (OutputFormat <> 'table') and (OutputFormat <> 'json') then
+            WriteLn('format must be table or json')
+          else
+            WriteLn('format set to ', OutputFormat);
+          Continue;
+        end;
+        WriteLn('unknown command: ', Line);
+        Continue;
+      end;
+
+      if (SqlBuffer = '') and (Trim(Line) = '\q') then
+        Break;
+      if Trim(Line) = '' then
+        Continue;
+
+      if SqlBuffer <> '' then
+        SqlBuffer := SqlBuffer + LineEnding;
+      SqlBuffer := SqlBuffer + Line;
+
+      if (Trim(SqlBuffer) <> '') and (Trim(SqlBuffer)[Length(Trim(SqlBuffer))] = ';') then
+      begin
+        ExitCode := ExecuteSqlForCli(Url, Token, SqlBuffer, OutputFormat);
+        if ExitCode <> 0 then
+          WriteLn(StdErr, 'SQL failed with exit code ', ExitCode);
+        SqlBuffer := '';
+      end;
+    end;
+  finally
+    if IsTerminalInput then
+      SaveShellHistory;
+    end;
 end;
 
 begin

@@ -284,9 +284,10 @@ Server binary также включает client commands:
 ```bash
 ./build/liquidstoolap connect \
   --url http://127.0.0.1:8321 \
-  --username admin \
-  --password-file ./secrets/admin.password
+  --username admin
 ```
+
+Если `--password-file` не передан, `connect` спросит пароль интерактивно без отображения ввода. Для scripts можно по-прежнему передать `--password-file ./secrets/admin.password`.
 
 Внутри shell вводите SQL, заканчивая statement символом `;`:
 
@@ -306,6 +307,8 @@ Shell commands:
 - `.format table`: выводить MySQL-style ASCII tables.
 - `.format json`: выводить raw JSON responses.
 - `.quit`, `.exit`, `\q`: выйти.
+
+В терминале с `libreadline` shell поддерживает command history, стрелки вверх/вниз и перемещение курсора внутри текущей команды. История сохраняется в `~/.liquidstoolap_history`. Если stdin не terminal, например при pipe, shell использует простое чтение строк.
 
 Выполнить один SQL statement без входа в shell:
 

@@ -284,9 +284,10 @@ For manual work, use `connect`. It behaves like a small SQL shell:
 ```bash
 ./build/liquidstoolap connect \
   --url http://127.0.0.1:8321 \
-  --username admin \
-  --password-file ./secrets/admin.password
+  --username admin
 ```
+
+When `--password-file` is omitted, `connect` asks for the password interactively without echoing it. You can still pass `--password-file ./secrets/admin.password` for scripts.
 
 Inside the shell, enter SQL terminated by `;`:
 
@@ -306,6 +307,8 @@ Shell commands:
 - `.format table`: use MySQL-style ASCII tables.
 - `.format json`: print raw JSON responses.
 - `.quit`, `.exit`, `\q`: exit.
+
+On terminals with `libreadline`, the shell supports command history, up/down arrows, and cursor movement inside the current command. History is saved in `~/.liquidstoolap_history`. When stdin is not a terminal, for example in a pipe, the shell falls back to simple line reads.
 
 Run one SQL statement without entering the shell:
 

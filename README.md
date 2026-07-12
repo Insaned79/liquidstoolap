@@ -217,9 +217,10 @@ Interactive SQL shell:
 ```bash
 ./build/liquidstoolap connect \
   --url http://127.0.0.1:8321 \
-  --username admin \
-  --password-file ./secrets/admin.password
+  --username admin
 ```
+
+If `--password-file` is omitted, `connect` prompts for the password interactively. The shell uses command history and cursor editing when `libreadline` is available.
 
 One-shot SQL from the command line:
 
@@ -518,9 +519,10 @@ curl -sS \
 ```bash
 ./build/liquidstoolap connect \
   --url http://127.0.0.1:8321 \
-  --username admin \
-  --password-file ./secrets/admin.password
+  --username admin
 ```
+
+Если `--password-file` не передан, `connect` интерактивно спросит пароль. Shell использует историю команд и редактирование строки, если доступен `libreadline`.
 
 Выполнить один SQL из командной строки:
 
