@@ -77,6 +77,31 @@ command_response="$(curl -fsS \
   -d '{"sql":"CREATE TABLE smoke_t (id INTEGER)"}')"
 grep -q '"kind" : "command"' <<<"$command_response"
 
+python3 - <<PY
+import json
+import urllib.request
+
+base = "http://127.0.0.1:$PORT"
+token = "$token"
+
+def post(payload):
+    req = urllib.request.Request(
+        base + "/sql",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+post({"sql": "CREATE TABLE unicode_t (name TEXT)"})
+post({"sql": "INSERT INTO unicode_t VALUES ('Детская')"})
+post({"sql": "INSERT INTO unicode_t VALUES (:name)", "params": {"name": "Спальня"}})
+rows = post({"sql": "SELECT name FROM unicode_t"})["result"]["rows"]
+values = [row["values"][0] for row in rows]
+assert values == ["Детская", "Спальня"], values
+PY
+
 multi_status="$(curl -sS -o /tmp/liquidstoolap-multi.json -w '%{http_code}' \
   -X POST "http://127.0.0.1:$PORT/sql" \
   -H "Authorization: Bearer $token" \

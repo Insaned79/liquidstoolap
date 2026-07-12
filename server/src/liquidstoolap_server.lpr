@@ -3,7 +3,7 @@ program liquidstoolap_server;
 {$mode objfpc}{$H+}
 
 uses
-  cthreads, SysUtils, Classes, BaseUnix, fphttpclient, fpjson, jsonparser, lsconfig, lshttpserver, lsversion;
+  cthreads, cwstring, SysUtils, Classes, BaseUnix, fphttpclient, fpjson, jsonparser, lsconfig, lshttpserver, lsversion;
 
 var
   ShutdownRequested: Boolean = False;

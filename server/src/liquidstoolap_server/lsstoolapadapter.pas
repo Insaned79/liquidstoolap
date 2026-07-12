@@ -34,6 +34,29 @@ type
 
 implementation
 
+function Utf8Bytes(const Value: string): RawByteString;
+begin
+  Result := UTF8Encode(UnicodeString(Value));
+end;
+
+function Utf8StringFromPtr(TextPtr: PChar; TextLen: Int64): string;
+var
+  Raw: RawByteString;
+begin
+  if TextPtr = nil then
+    Exit('');
+  SetString(Raw, TextPtr, TextLen);
+  SetCodePage(Raw, CP_UTF8, False);
+  Result := string(Raw);
+end;
+
+function Utf8StringFromNullTerminated(TextPtr: PChar): string;
+begin
+  if TextPtr = nil then
+    Exit('');
+  Result := Utf8StringFromPtr(TextPtr, StrLen(TextPtr));
+end;
+
 constructor TStoolapAdapter.Create(const Config: TStoolapConfig);
 begin
   inherited Create;
@@ -69,7 +92,7 @@ begin
   begin
     MessagePtr := FLibrary.Errmsg(FDb);
     if MessagePtr <> nil then
-      Result := StrPas(MessagePtr);
+      Result := Utf8StringFromNullTerminated(MessagePtr);
   end;
 end;
 
@@ -85,6 +108,7 @@ end;
 procedure TStoolapAdapter.Open;
 var
   Status: Integer;
+  DsnBytes: RawByteString;
 begin
   if FLibrary = nil then
     FLibrary := TStoolapLibrary.Create(FConfig.LibraryPath);
@@ -95,7 +119,10 @@ begin
   if Dsn = 'memory://' then
     Status := FLibrary.OpenInMemory(FDb)
   else
-    Status := FLibrary.Open(PChar(Dsn), FDb);
+  begin
+    DsnBytes := Utf8Bytes(Dsn);
+    Status := FLibrary.Open(PChar(DsnBytes), FDb);
+  end;
 
   if Status <> STOOLAP_OK then
     raise EStoolapAdapterError.Create('failed to open Stoolap database: ' + LastDbError);
@@ -159,7 +186,7 @@ begin
   I := 0;
   for Item in ParamsObject do
   begin
-    Names[I] := RawByteString(Item.Key);
+    Names[I] := Utf8Bytes(Item.Key);
     Params[I].Name := PChar(Names[I]);
     Params[I].NameLen := Length(Names[I]);
     Params[I].Padding := 0;
@@ -191,7 +218,7 @@ begin
         end;
       jtString:
         begin
-          TextValues[I] := RawByteString(Value.AsString);
+          TextValues[I] := Utf8Bytes(Value.AsString);
           Params[I].Value.ValueType := STOOLAP_TYPE_TEXT;
           Params[I].Value.V.TextValue.Ptr := PChar(TextValues[I]);
           Params[I].Value.V.TextValue.Len := Length(TextValues[I]);
@@ -232,7 +259,7 @@ begin
 
   ColumnCount := FLibrary.RowsColumnCount(Rows);
   for I := 0 to ColumnCount - 1 do
-    Columns.Add(StrPas(FLibrary.RowsColumnName(Rows, I)));
+    Columns.Add(Utf8StringFromNullTerminated(FLibrary.RowsColumnName(Rows, I)));
 
   Status := FLibrary.RowsNext(Rows);
   while Status = STOOLAP_ROW do
@@ -264,7 +291,7 @@ begin
               if TextPtr = nil then
                 Values.Add(TJSONNull.Create)
               else
-                  Values.Add(Copy(StrPas(TextPtr), 1, TextLen));
+                  Values.Add(Utf8StringFromPtr(TextPtr, TextLen));
             end;
           STOOLAP_TYPE_BLOB:
             begin
@@ -289,7 +316,7 @@ begin
   end;
 
   if Status <> STOOLAP_DONE then
-    raise EStoolapAdapterError.Create('Stoolap rows iteration failed: ' + StrPas(FLibrary.RowsErrmsg(Rows)));
+    raise EStoolapAdapterError.Create('Stoolap rows iteration failed: ' + Utf8StringFromNullTerminated(FLibrary.RowsErrmsg(Rows)));
 
   Result.Add('row_count', RowObjects.Count);
 end;
@@ -308,8 +335,10 @@ var
   NamedParams: array of TStoolapNamedParam;
   Names: array of RawByteString;
   TextValues: array of RawByteString;
+  SqlBytes: RawByteString;
 begin
   Open;
+  SqlBytes := Utf8Bytes(Sql);
   Rows := nil;
   SetLength(NamedParams, 0);
   SetLength(Names, 0);
@@ -320,10 +349,10 @@ begin
     SetLength(Names, Params.Count);
     SetLength(TextValues, Params.Count);
     BuildNamedParams(Params, NamedParams, Names, TextValues);
-    Status := FLibrary.QueryNamedTimeout(FDb, PChar(Sql), @NamedParams[0], Length(NamedParams), TimeoutMs, Rows);
+    Status := FLibrary.QueryNamedTimeout(FDb, PChar(SqlBytes), @NamedParams[0], Length(NamedParams), TimeoutMs, Rows);
   end
   else
-    Status := FLibrary.QueryNamedTimeout(FDb, PChar(Sql), nil, 0, TimeoutMs, Rows);
+    Status := FLibrary.QueryNamedTimeout(FDb, PChar(SqlBytes), nil, 0, TimeoutMs, Rows);
 
   if Status <> STOOLAP_OK then
     RaiseBackendError('Stoolap query failed: ', LastDbError);
@@ -343,8 +372,10 @@ var
   NamedParams: array of TStoolapNamedParam;
   Names: array of RawByteString;
   TextValues: array of RawByteString;
+  SqlBytes: RawByteString;
 begin
   Open;
+  SqlBytes := Utf8Bytes(Sql);
   RowsAffected := 0;
   SetLength(NamedParams, 0);
   SetLength(Names, 0);
@@ -355,10 +386,10 @@ begin
     SetLength(Names, Params.Count);
     SetLength(TextValues, Params.Count);
     BuildNamedParams(Params, NamedParams, Names, TextValues);
-    Status := FLibrary.ExecNamedTimeout(FDb, PChar(Sql), @NamedParams[0], Length(NamedParams), TimeoutMs, @RowsAffected);
+    Status := FLibrary.ExecNamedTimeout(FDb, PChar(SqlBytes), @NamedParams[0], Length(NamedParams), TimeoutMs, @RowsAffected);
   end
   else
-    Status := FLibrary.ExecNamedTimeout(FDb, PChar(Sql), nil, 0, TimeoutMs, @RowsAffected);
+    Status := FLibrary.ExecNamedTimeout(FDb, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
 
   if Status <> STOOLAP_OK then
     RaiseBackendError('Stoolap exec failed: ', LastDbError);
