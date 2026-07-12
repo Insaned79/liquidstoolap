@@ -279,6 +279,46 @@ The server binary also includes client commands:
 ./build/liquidstoolap sql --url http://127.0.0.1:8321 --token "$TOKEN" --sql "SELECT :id" --param id=42
 ```
 
+For manual work, use `connect`. It behaves like a small SQL shell:
+
+```bash
+./build/liquidstoolap connect \
+  --url http://127.0.0.1:8321 \
+  --username admin \
+  --password-file ./secrets/admin.password
+```
+
+Inside the shell, enter SQL terminated by `;`:
+
+```sql
+liquidstoolap> SELECT 42 AS answer;
++--------+
+| answer |
++--------+
+| 42     |
++--------+
+1 row(s)
+```
+
+Shell commands:
+
+- `.help`: show shell help.
+- `.format table`: use MySQL-style ASCII tables.
+- `.format json`: print raw JSON responses.
+- `.quit`, `.exit`, `\q`: exit.
+
+Run one SQL statement without entering the shell:
+
+```bash
+./build/liquidstoolap connect \
+  --url http://127.0.0.1:8321 \
+  --token "$TOKEN" \
+  -e "SELECT :id AS id" \
+  --param id=42
+```
+
+Use `--format json` when scripts need the original REST response envelope.
+
 CLI `--param` values parse `null`, `true`, `false`, integers, and floats as JSON scalar values. Other values are sent as strings.
 
 CLI exit codes:

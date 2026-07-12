@@ -76,6 +76,8 @@ begin
   WriteLn('  liquidstoolap health --url URL');
   WriteLn('  liquidstoolap token --url URL --username USER --password-file PATH');
   WriteLn('  liquidstoolap sql --url URL --token TOKEN --sql SQL [--param name=value]');
+  WriteLn('  liquidstoolap connect --url URL (--token TOKEN | --username USER --password-file PATH)');
+  WriteLn('  liquidstoolap connect --url URL --token TOKEN -e SQL [--format table|json]');
 end;
 
 function ArgValue(const Name: string; const DefaultValue: string): string;
@@ -84,8 +86,17 @@ var
 begin
   Result := DefaultValue;
   for I := 1 to ParamCount - 1 do
-    if ParamStr(I) = Name then
+    if (ParamStr(I) = Name) and (I < ParamCount) then
       Exit(ParamStr(I + 1));
+end;
+
+function FirstArgValue(const Name1, Name2, DefaultValue: string): string;
+begin
+  Result := ArgValue(Name1, '');
+  if Result = '' then
+    Result := ArgValue(Name2, '');
+  if Result = '' then
+    Result := DefaultValue;
 end;
 
 procedure Serve;
@@ -239,6 +250,73 @@ begin
     Halt(2);
 end;
 
+function HttpPostJson(const Url, Payload, Token: string; out StatusCode: Integer): string;
+var
+  Client: TFPHTTPClient;
+  Request: TStringStream;
+begin
+  Client := TFPHTTPClient.Create(nil);
+  Request := TStringStream.Create(Payload);
+  try
+    Client.AddHeader('Content-Type', 'application/json');
+    if Token <> '' then
+      Client.AddHeader('Authorization', 'Bearer ' + Token);
+    Client.RequestBody := Request;
+    try
+      Result := Client.Post(Url);
+    except
+      on E: EHTTPClient do
+        Result := E.Message;
+      on E: Exception do
+        raise;
+    end;
+    StatusCode := Client.ResponseStatusCode;
+  finally
+    Client.RequestBody := nil;
+    Request.Free;
+    Client.Free;
+  end;
+end;
+
+function IssueToken(const Url, Username, PasswordFile: string): string;
+var
+  StatusCode: Integer;
+  Body: string;
+  Data: TJSONData;
+begin
+  if PasswordFile = '' then
+    raise Exception.Create('--password-file is required when --token is not provided');
+
+  Body := HttpPostJson(
+    Url + '/auth/token',
+    '{"username":' + JsonString(Username) + ',"password":' + JsonString(ReadFirstLine(PasswordFile)) + '}',
+    '',
+    StatusCode
+  );
+  if StatusCode >= 400 then
+    raise Exception.Create('auth failed: ' + Body);
+
+  Data := GetJSON(Body);
+  try
+    Result := TJSONObject(Data).Objects['token'].Get('access_token', '');
+  finally
+    Data.Free;
+  end;
+  if Result = '' then
+    raise Exception.Create('auth response did not include access_token');
+end;
+
+function CliAuthToken(const Url: string): string;
+var
+  Username: string;
+begin
+  Result := ArgValue('--token', '');
+  if Result <> '' then
+    Exit;
+  Username := ArgValue('--username', 'admin');
+  Result := IssueToken(Url, Username, ArgValue('--password-file', ''));
+end;
+
 procedure CliHealth;
 var
   Client: TFPHTTPClient;
@@ -306,6 +384,21 @@ begin
   end;
 end;
 
+function BuildParamsJson: string; forward;
+
+function SqlPayload(const Sql: string): string;
+begin
+  Result := '{"sql":' + JsonString(Sql) + BuildParamsJson + '}';
+end;
+
+function TrimTrailingSemicolon(const Sql: string): string;
+begin
+  Result := Trim(Sql);
+  if (Result <> '') and (Result[Length(Result)] = ';') then
+    Delete(Result, Length(Result), 1);
+  Result := Trim(Result);
+end;
+
 function BuildParamsJson: string;
 var
   I: Integer;
@@ -355,7 +448,7 @@ begin
     WriteLn(StdErr, '--token and --sql are required');
     Halt(2);
   end;
-  Payload := '{"sql":' + JsonString(Sql) + BuildParamsJson + '}';
+  Payload := SqlPayload(Sql);
 
   Client := TFPHTTPClient.Create(nil);
   Request := TStringStream.Create(Payload);
@@ -377,6 +470,265 @@ begin
     Client.RequestBody := nil;
     Request.Free;
     Client.Free;
+  end;
+end;
+
+function JsonValueToText(Value: TJSONData): string;
+begin
+  if Value = nil then
+    Exit('NULL');
+  case Value.JSONType of
+    jtNull: Result := 'NULL';
+    jtBoolean:
+      if Value.AsBoolean then
+        Result := 'true'
+      else
+        Result := 'false';
+    jtNumber: Result := Value.AsJSON;
+    jtString: Result := Value.AsString;
+  else
+    Result := Value.AsJSON;
+  end;
+end;
+
+function RepeatChar(const Ch: Char; Count: Integer): string;
+begin
+  if Count <= 0 then
+    Exit('');
+  SetLength(Result, Count);
+  FillChar(Result[1], Count, Ord(Ch));
+end;
+
+procedure PrintTableSeparator(const Widths: array of Integer);
+var
+  I: Integer;
+begin
+  Write('+');
+  for I := 0 to High(Widths) do
+    Write(RepeatChar('-', Widths[I] + 2), '+');
+  WriteLn;
+end;
+
+procedure PrintTableRow(const Values: array of string; const Widths: array of Integer);
+var
+  I: Integer;
+begin
+  Write('|');
+  for I := 0 to High(Widths) do
+    Write(' ', Values[I], RepeatChar(' ', Widths[I] - Length(Values[I]) + 1), '|');
+  WriteLn;
+end;
+
+procedure PrintSqlTable(const Body: string);
+var
+  Data: TJSONData;
+  ResultObj: TJSONObject;
+  Kind: string;
+  Columns: TJSONArray;
+  Rows: TJSONArray;
+  RowValues: TJSONArray;
+  Widths: array of Integer;
+  Header: array of string;
+  RowText: array of string;
+  I: Integer;
+  R: Integer;
+  AffectedRows: Int64;
+begin
+  Data := GetJSON(Body);
+  try
+    if not TJSONObject(Data).Get('ok', False) then
+    begin
+      WriteLn(Body);
+      Exit;
+    end;
+
+    ResultObj := TJSONObject(Data).Objects['result'];
+    Kind := ResultObj.Get('kind', '');
+    if Kind = 'command' then
+    begin
+      AffectedRows := ResultObj.Get('affected_rows', Int64(0));
+      WriteLn('Query OK, ', AffectedRows, ' row(s) affected');
+      Exit;
+    end;
+
+    if Kind <> 'result_set' then
+    begin
+      WriteLn(Body);
+      Exit;
+    end;
+
+    Columns := ResultObj.Arrays['columns'];
+    Rows := ResultObj.Arrays['rows'];
+    SetLength(Widths, Columns.Count);
+    SetLength(Header, Columns.Count);
+    SetLength(RowText, Columns.Count);
+
+    for I := 0 to Columns.Count - 1 do
+    begin
+      Header[I] := Columns.Strings[I];
+      Widths[I] := Length(Header[I]);
+    end;
+
+    for R := 0 to Rows.Count - 1 do
+    begin
+      RowValues := Rows.Objects[R].Arrays['values'];
+      for I := 0 to Columns.Count - 1 do
+      begin
+        RowText[I] := JsonValueToText(RowValues.Items[I]);
+        if Length(RowText[I]) > Widths[I] then
+          Widths[I] := Length(RowText[I]);
+      end;
+    end;
+
+    PrintTableSeparator(Widths);
+    PrintTableRow(Header, Widths);
+    PrintTableSeparator(Widths);
+    for R := 0 to Rows.Count - 1 do
+    begin
+      RowValues := Rows.Objects[R].Arrays['values'];
+      for I := 0 to Columns.Count - 1 do
+        RowText[I] := JsonValueToText(RowValues.Items[I]);
+      PrintTableRow(RowText, Widths);
+    end;
+    PrintTableSeparator(Widths);
+    WriteLn(Rows.Count, ' row(s)');
+  finally
+    Data.Free;
+  end;
+end;
+
+procedure PrintSqlResponse(const Body, OutputFormat: string);
+var
+  TrimmedBody: string;
+begin
+  TrimmedBody := Trim(Body);
+  if TrimmedBody = '' then
+    Exit;
+  if TrimmedBody[1] <> '{' then
+  begin
+    WriteLn(Body);
+    Exit;
+  end;
+  if OutputFormat = 'json' then
+    WriteLn(Body)
+  else
+    PrintSqlTable(Body);
+end;
+
+function ExecuteSqlForCli(const Url, Token, Sql, OutputFormat: string): Integer;
+var
+  StatusCode: Integer;
+  Body: string;
+begin
+  Body := HttpPostJson(Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Token, StatusCode);
+  PrintSqlResponse(Body, OutputFormat);
+  if StatusCode >= 500 then
+    Exit(4);
+  if (StatusCode = 401) or (StatusCode = 403) then
+    Exit(3);
+  if StatusCode = 422 then
+    Exit(5);
+  if StatusCode >= 400 then
+    Exit(2);
+  Result := 0;
+end;
+
+procedure PrintShellHelp;
+begin
+  WriteLn('Commands:');
+  WriteLn('  SQL;             execute SQL when a trailing semicolon is entered');
+  WriteLn('  .help            show this help');
+  WriteLn('  .format table    print result sets as ASCII tables');
+  WriteLn('  .format json     print raw JSON responses');
+  WriteLn('  .quit, .exit, \q  exit');
+end;
+
+procedure CliConnect;
+var
+  Url: string;
+  Token: string;
+  ExecuteSql: string;
+  OutputFormat: string;
+  Line: string;
+  SqlBuffer: string;
+  ExitCode: Integer;
+begin
+  Url := ArgValue('--url', 'http://127.0.0.1:8321');
+  OutputFormat := ArgValue('--format', 'table');
+  if (OutputFormat <> 'table') and (OutputFormat <> 'json') then
+  begin
+    WriteLn(StdErr, '--format must be table or json');
+    Halt(2);
+  end;
+
+  try
+    Token := CliAuthToken(Url);
+  except
+    on E: Exception do
+    begin
+      WriteLn(StdErr, E.Message);
+      Halt(3);
+    end;
+  end;
+
+  ExecuteSql := FirstArgValue('--execute', '-e', '');
+  if ExecuteSql <> '' then
+  begin
+    Halt(ExecuteSqlForCli(Url, Token, ExecuteSql, OutputFormat));
+  end;
+
+  WriteLn('Connected to ', Url);
+  WriteLn('Enter SQL terminated by semicolon. Type .help for help.');
+  SqlBuffer := '';
+  while True do
+  begin
+    if SqlBuffer = '' then
+      Write('liquidstoolap> ')
+    else
+      Write('          ...> ');
+    if EOF(Input) then
+      Break;
+    ReadLn(Line);
+
+    if (SqlBuffer = '') and (Length(Trim(Line)) > 0) and (Trim(Line)[1] = '.') then
+    begin
+      Line := Trim(Line);
+      if (Line = '.quit') or (Line = '.exit') then
+        Break;
+      if Line = '.help' then
+      begin
+        PrintShellHelp;
+        Continue;
+      end;
+      if Pos('.format ', Line) = 1 then
+      begin
+        OutputFormat := Trim(Copy(Line, Length('.format ') + 1, MaxInt));
+        if (OutputFormat <> 'table') and (OutputFormat <> 'json') then
+          WriteLn('format must be table or json')
+        else
+          WriteLn('format set to ', OutputFormat);
+        Continue;
+      end;
+      WriteLn('unknown command: ', Line);
+      Continue;
+    end;
+
+    if (SqlBuffer = '') and (Trim(Line) = '\q') then
+      Break;
+    if Trim(Line) = '' then
+      Continue;
+
+    if SqlBuffer <> '' then
+      SqlBuffer := SqlBuffer + LineEnding;
+    SqlBuffer := SqlBuffer + Line;
+
+    if (Trim(SqlBuffer) <> '') and (Trim(SqlBuffer)[Length(Trim(SqlBuffer))] = ';') then
+    begin
+      ExitCode := ExecuteSqlForCli(Url, Token, SqlBuffer, OutputFormat);
+      if ExitCode <> 0 then
+        WriteLn(StdErr, 'SQL failed with exit code ', ExitCode);
+      SqlBuffer := '';
+    end;
   end;
 end;
 
@@ -406,6 +758,8 @@ begin
     CliToken
   else if ParamStr(1) = 'sql' then
     CliSql
+  else if ParamStr(1) = 'connect' then
+    CliConnect
   else
   begin
     WriteLn(StdErr, 'unknown command: ', ParamStr(1));

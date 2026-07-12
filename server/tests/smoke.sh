@@ -70,6 +70,20 @@ grep -q '"values" : \[42\]' <<<"$select_response"
 cli_select_response="$(./build/liquidstoolap sql --url "http://127.0.0.1:$PORT" --token "$cli_token" --sql "SELECT :id" --param id=43)"
 grep -q '"values" : \[43\]' <<<"$cli_select_response"
 
+cli_connect_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token" -e "SELECT :id AS id" --param id=44)"
+grep -q '| id |' <<<"$cli_connect_response"
+grep -q '| 44 |' <<<"$cli_connect_response"
+
+cli_connect_login_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin --password-file "$PASSWORD_FILE" -e "SELECT 440 AS id")"
+grep -q '| 440 |' <<<"$cli_connect_login_response"
+
+cli_connect_json_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token" -e "SELECT 45 AS id" --format json)"
+grep -q '"values" : \[45\]' <<<"$cli_connect_json_response"
+
+cli_shell_response="$(printf 'SELECT 46 AS id;\n.quit\n' | ./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token")"
+grep -q 'liquidstoolap>' <<<"$cli_shell_response"
+grep -q '| 46 |' <<<"$cli_shell_response"
+
 command_response="$(curl -fsS \
   -X POST "http://127.0.0.1:$PORT/sql" \
   -H "Authorization: Bearer $token" \

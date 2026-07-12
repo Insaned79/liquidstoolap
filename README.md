@@ -212,6 +212,21 @@ curl -sS \
   -d '{"sql":"SELECT :id","params":{"id":42},"timeout_ms":5000}'
 ```
 
+Interactive SQL shell:
+
+```bash
+./build/liquidstoolap connect \
+  --url http://127.0.0.1:8321 \
+  --username admin \
+  --password-file ./secrets/admin.password
+```
+
+One-shot SQL from the command line:
+
+```bash
+./build/liquidstoolap connect --url http://127.0.0.1:8321 --token "$TOKEN" -e "SELECT 42 AS answer"
+```
+
 ### Python SDK
 
 ```python
@@ -496,6 +511,21 @@ curl -sS \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"sql":"SELECT :id","params":{"id":42},"timeout_ms":5000}'
+```
+
+Интерактивный SQL shell:
+
+```bash
+./build/liquidstoolap connect \
+  --url http://127.0.0.1:8321 \
+  --username admin \
+  --password-file ./secrets/admin.password
+```
+
+Выполнить один SQL из командной строки:
+
+```bash
+./build/liquidstoolap connect --url http://127.0.0.1:8321 --token "$TOKEN" -e "SELECT 42 AS answer"
 ```
 
 ### Python SDK
