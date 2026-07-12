@@ -100,6 +100,15 @@ post({"sql": "INSERT INTO unicode_t VALUES (:name)", "params": {"name": "Спа�
 rows = post({"sql": "SELECT name FROM unicode_t"})["result"]["rows"]
 values = [row["values"][0] for row in rows]
 assert values == ["Детская", "Спальня"], values
+
+post({"sql": 'CREATE TABLE "TELEMETRY" ("ID" INTEGER, "TYPE" TEXT, "NAME" TEXT, "DATE_TIME" TIMESTAMP, "V" DOUBLE)'})
+post({"sql": 'CREATE TABLE "TELEMETRY_DIM" ("TYPE" TEXT, "NAME" TEXT, "FIRST_DATE_TIME" TIMESTAMP, "LAST_DATE_TIME" TIMESTAMP, "CNT" INTEGER)'})
+post({"sql": 'INSERT INTO "TELEMETRY" ("ID", "TYPE", "NAME", "DATE_TIME", "V") VALUES (10, \'Температура\', \'Спальня\', \'2026-01-01 00:00:00\', 21.5)'})
+post({"sql": 'INSERT INTO "TELEMETRY" ("TYPE", "NAME", "DATE_TIME", "V") VALUES (\'Температура\', \'Спальня\', \'2026-01-01 00:01:00\', 22.0)'})
+rows = post({"sql": 'SELECT max("ID") FROM "TELEMETRY"'})["result"]["rows"]
+assert rows[0]["values"][0] == 11, rows
+rows = post({"sql": 'SELECT "TYPE", "NAME", "CNT" FROM "TELEMETRY_DIM"'})["result"]["rows"]
+assert rows == [{"values": ["Температура", "Спальня", 2]}], rows
 PY
 
 multi_status="$(curl -sS -o /tmp/liquidstoolap-multi.json -w '%{http_code}' \

@@ -20,6 +20,11 @@ type
     function LastDbError: string;
     function IsQuerySql(const Sql: string): Boolean;
     function RowsToJson(Rows: PStoolapRows): TJSONObject;
+    function CommandJsonRaw(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+    function QueryScalarInt64(const Sql: string; TimeoutMs: Int64): Int64;
+    function TryRewriteTelemetryInsert(const Sql: string; out RewrittenSql: string): Boolean;
+    function IsTelemetryMutation(const Sql: string): Boolean;
+    procedure RefreshTelemetryDim(TimeoutMs: Int64);
   public
     constructor Create(const Config: TStoolapConfig);
     destructor Destroy; override;
@@ -104,6 +109,219 @@ begin
   S := UpperCase(Trim(Sql));
   Result := (Pos('SELECT', S) = 1) or (Pos('WITH', S) = 1) or
     (Pos('SHOW', S) = 1) or (Pos('EXPLAIN', S) = 1);
+end;
+
+function StripIdentifier(const Value: string): string;
+var
+  S: string;
+begin
+  S := Trim(Value);
+  if (Length(S) >= 2) and (S[1] = '"') and (S[Length(S)] = '"') then
+    S := Copy(S, 2, Length(S) - 2);
+  Result := UpperCase(S);
+end;
+
+function FindMatchingParen(const S: string; OpenPos: Integer): Integer;
+var
+  I: Integer;
+  Depth: Integer;
+  InString: Boolean;
+begin
+  Result := 0;
+  Depth := 0;
+  InString := False;
+  I := OpenPos;
+  while I <= Length(S) do
+  begin
+    if S[I] = '''' then
+    begin
+      if InString and (I < Length(S)) and (S[I + 1] = '''') then
+        Inc(I)
+      else
+        InString := not InString;
+    end
+    else if not InString then
+    begin
+      if S[I] = '(' then
+        Inc(Depth)
+      else if S[I] = ')' then
+      begin
+        Dec(Depth);
+        if Depth = 0 then
+          Exit(I);
+      end;
+    end;
+    Inc(I);
+  end;
+end;
+
+function NextWord(const S: string; var PosIndex: Integer): string;
+var
+  Start: Integer;
+begin
+  while (PosIndex <= Length(S)) and (S[PosIndex] <= ' ') do
+    Inc(PosIndex);
+  if PosIndex > Length(S) then
+    Exit('');
+  if S[PosIndex] = '"' then
+  begin
+    Start := PosIndex;
+    Inc(PosIndex);
+    while (PosIndex <= Length(S)) and (S[PosIndex] <> '"') do
+      Inc(PosIndex);
+    if PosIndex <= Length(S) then
+      Inc(PosIndex);
+    Exit(Copy(S, Start, PosIndex - Start));
+  end;
+  Start := PosIndex;
+  while (PosIndex <= Length(S)) and not (S[PosIndex] in [' ', #9, #10, #13, '(']) do
+    Inc(PosIndex);
+  Result := Copy(S, Start, PosIndex - Start);
+end;
+
+function TStoolapAdapter.QueryScalarInt64(const Sql: string; TimeoutMs: Int64): Int64;
+var
+  Json: TJSONObject;
+  Rows: TJSONArray;
+  Row: TJSONObject;
+  Values: TJSONArray;
+begin
+  Json := QueryJson(Sql, nil, TimeoutMs);
+  try
+    Rows := Json.Arrays['rows'];
+    if Rows.Count = 0 then
+      Exit(0);
+    Row := Rows.Objects[0];
+    Values := Row.Arrays['values'];
+    if (Values.Count = 0) or (Values.Items[0].JSONType = jtNull) then
+      Exit(0);
+    Result := Values.Integers[0];
+  finally
+    Json.Free;
+  end;
+end;
+
+function TStoolapAdapter.TryRewriteTelemetryInsert(const Sql: string; out RewrittenSql: string): Boolean;
+var
+  S: string;
+  Upper: string;
+  P: Integer;
+  InsertWord: string;
+  IntoWord: string;
+  TableName: string;
+  ColumnsStart: Integer;
+  ColumnsEnd: Integer;
+  ValuesPos: Integer;
+  ValuesStart: Integer;
+  ValuesEnd: Integer;
+  ColumnsText: string;
+  NextId: Int64;
+  Tail: string;
+begin
+  Result := False;
+  RewrittenSql := Sql;
+  S := Trim(Sql);
+  if (S <> '') and (S[Length(S)] = ';') then
+    Delete(S, Length(S), 1);
+
+  P := 1;
+  InsertWord := UpperCase(NextWord(S, P));
+  IntoWord := UpperCase(NextWord(S, P));
+  if (InsertWord <> 'INSERT') or (IntoWord <> 'INTO') then
+    Exit;
+  TableName := NextWord(S, P);
+  if StripIdentifier(TableName) <> 'TELEMETRY' then
+    Exit;
+
+  while (P <= Length(S)) and (S[P] <= ' ') do
+    Inc(P);
+  if (P > Length(S)) or (S[P] <> '(') then
+    Exit;
+  ColumnsStart := P;
+  ColumnsEnd := FindMatchingParen(S, ColumnsStart);
+  if ColumnsEnd = 0 then
+    Exit;
+  ColumnsText := Copy(S, ColumnsStart + 1, ColumnsEnd - ColumnsStart - 1);
+  if Pos('ID', UpperCase(StringReplace(ColumnsText, '"', '', [rfReplaceAll]))) > 0 then
+    Exit;
+
+  Upper := UpperCase(S);
+  ValuesPos := Pos('VALUES', Copy(Upper, ColumnsEnd + 1, MaxInt));
+  if ValuesPos = 0 then
+    Exit;
+  ValuesPos := ColumnsEnd + ValuesPos;
+  ValuesStart := ValuesPos + Length('VALUES');
+  while (ValuesStart <= Length(S)) and (S[ValuesStart] <= ' ') do
+    Inc(ValuesStart);
+  if (ValuesStart > Length(S)) or (S[ValuesStart] <> '(') then
+    Exit;
+  ValuesEnd := FindMatchingParen(S, ValuesStart);
+  if ValuesEnd = 0 then
+    Exit;
+  Tail := Trim(Copy(S, ValuesEnd + 1, MaxInt));
+  if (Tail <> '') and (Tail[1] = ',') then
+    raise EStoolapAdapterError.Create('Firebird compatibility auto-ID supports single-row TELEMETRY INSERT only');
+
+  NextId := QueryScalarInt64('SELECT max("ID") FROM "TELEMETRY"', 60000) + 1;
+  RewrittenSql :=
+    Copy(S, 1, ColumnsStart) + '"ID", ' +
+    Copy(S, ColumnsStart + 1, ColumnsEnd - ColumnsStart - 1) +
+    Copy(S, ColumnsEnd, ValuesStart - ColumnsEnd + 1) + IntToStr(NextId) + ', ' +
+    Copy(S, ValuesStart + 1, MaxInt);
+  Result := True;
+end;
+
+function TStoolapAdapter.IsTelemetryMutation(const Sql: string): Boolean;
+var
+  S: string;
+  P: Integer;
+  First: string;
+  Second: string;
+  TableName: string;
+begin
+  Result := False;
+  S := Trim(Sql);
+  if (S <> '') and (S[Length(S)] = ';') then
+    Delete(S, Length(S), 1);
+  P := 1;
+  First := UpperCase(NextWord(S, P));
+  if First = 'INSERT' then
+  begin
+    Second := UpperCase(NextWord(S, P));
+    if Second <> 'INTO' then
+      Exit;
+    TableName := NextWord(S, P);
+  end
+  else if First = 'DELETE' then
+  begin
+    Second := UpperCase(NextWord(S, P));
+    if Second <> 'FROM' then
+      Exit;
+    TableName := NextWord(S, P);
+  end
+  else if First = 'UPDATE' then
+    TableName := NextWord(S, P)
+  else
+    Exit;
+  Result := StripIdentifier(TableName) = 'TELEMETRY';
+end;
+
+procedure TStoolapAdapter.RefreshTelemetryDim(TimeoutMs: Int64);
+var
+  Obj: TJSONObject;
+begin
+  Obj := CommandJsonRaw('DROP TABLE IF EXISTS "TELEMETRY_DIM"', nil, TimeoutMs);
+  Obj.Free;
+  Obj := CommandJsonRaw('CREATE TABLE "TELEMETRY_DIM" ("TYPE" TEXT, "NAME" TEXT, "FIRST_DATE_TIME" TIMESTAMP, "LAST_DATE_TIME" TIMESTAMP, "CNT" INTEGER)', nil, TimeoutMs);
+  Obj.Free;
+  Obj := CommandJsonRaw(
+    'INSERT INTO "TELEMETRY_DIM" ("TYPE", "NAME", "FIRST_DATE_TIME", "LAST_DATE_TIME", "CNT") ' +
+    'SELECT "TYPE", "NAME", min("DATE_TIME"), max("DATE_TIME"), count(*) FROM "TELEMETRY" ' +
+    'WHERE "TYPE" IS NOT NULL AND "NAME" IS NOT NULL GROUP BY "TYPE", "NAME"',
+    nil, TimeoutMs);
+  Obj.Free;
+  Obj := CommandJsonRaw('CREATE UNIQUE INDEX PK_TELEMETRY_DIM ON "TELEMETRY_DIM" ("NAME", "TYPE")', nil, TimeoutMs);
+  Obj.Free;
 end;
 
 procedure TStoolapAdapter.Open;
@@ -366,7 +584,7 @@ begin
   end;
 end;
 
-function TStoolapAdapter.CommandJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+function TStoolapAdapter.CommandJsonRaw(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
 var
   Status: Integer;
   RowsAffected: Int64;
@@ -399,6 +617,17 @@ begin
   Result.Add('kind', 'command');
   Result.Add('affected_rows', RowsAffected);
   Result.Add('last_insert_id', TJSONNull.Create);
+end;
+
+function TStoolapAdapter.CommandJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+var
+  SqlToExecute: string;
+begin
+  SqlToExecute := Sql;
+  TryRewriteTelemetryInsert(Sql, SqlToExecute);
+  Result := CommandJsonRaw(SqlToExecute, Params, TimeoutMs);
+  if IsTelemetryMutation(SqlToExecute) then
+    RefreshTelemetryDim(TimeoutMs);
 end;
 
 function TStoolapAdapter.ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
