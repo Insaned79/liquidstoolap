@@ -8,6 +8,13 @@ uses
 var
   ShutdownRequested: Boolean = False;
 
+procedure ConfigureTextEncoding;
+begin
+  DefaultSystemCodePage := CP_UTF8;
+  DefaultFileSystemCodePage := CP_UTF8;
+  SetMultiByteConversionCodePage(CP_UTF8);
+end;
+
 procedure HandleShutdownSignal(Sig: cint); cdecl;
 begin
   ShutdownRequested := True;
@@ -374,6 +381,7 @@ begin
 end;
 
 begin
+  ConfigureTextEncoding;
   Randomize;
 
   if (ParamCount = 0) or (ParamStr(1) = '--help') or (ParamStr(1) = 'help') then

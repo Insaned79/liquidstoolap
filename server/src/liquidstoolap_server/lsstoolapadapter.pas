@@ -36,7 +36,8 @@ implementation
 
 function Utf8Bytes(const Value: string): RawByteString;
 begin
-  Result := UTF8Encode(UnicodeString(Value));
+  Result := RawByteString(Value);
+  SetCodePage(Result, CP_UTF8, False);
 end;
 
 function Utf8StringFromPtr(TextPtr: PChar; TextLen: Int64): string;
