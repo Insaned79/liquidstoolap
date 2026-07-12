@@ -100,6 +100,13 @@ post({"sql": "INSERT INTO unicode_t VALUES (:name)", "params": {"name": "Спа�
 rows = post({"sql": "SELECT name FROM unicode_t"})["result"]["rows"]
 values = [row["values"][0] for row in rows]
 assert values == ["Детская", "Спальня"], values
+
+post({"sql": "CREATE TABLE timestamp_t (ts TIMESTAMP)"})
+post({"sql": "INSERT INTO timestamp_t VALUES ('2026-01-02 03:04:05')"})
+timestamp_result = post({"sql": "SELECT ts FROM timestamp_t"})["result"]
+assert timestamp_result["types"] == ["TIMESTAMP"], timestamp_result
+timestamp_value = timestamp_result["rows"][0]["values"][0]
+assert timestamp_value == "2026-01-02T03:04:05.000000000Z", timestamp_value
 PY
 
 multi_status="$(curl -sS -o /tmp/liquidstoolap-multi.json -w '%{http_code}' \

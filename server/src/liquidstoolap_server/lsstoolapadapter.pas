@@ -5,7 +5,7 @@ unit lsstoolapadapter;
 interface
 
 uses
-  SysUtils, fpjson, base64, lsconfig, lsstoolapffi;
+  SysUtils, DateUtils, fpjson, base64, lsconfig, lsstoolapffi;
 
 type
   EStoolapAdapterError = class(Exception);
@@ -56,6 +56,24 @@ begin
   if TextPtr = nil then
     Exit('');
   Result := Utf8StringFromPtr(TextPtr, StrLen(TextPtr));
+end;
+
+function TimestampNsToIsoUtc(const TimestampNs: Int64): string;
+const
+  NanosPerSecond = Int64(1000000000);
+var
+  Seconds: Int64;
+  Nanos: Int64;
+begin
+  Seconds := TimestampNs div NanosPerSecond;
+  Nanos := TimestampNs mod NanosPerSecond;
+  if Nanos < 0 then
+  begin
+    Dec(Seconds);
+    Inc(Nanos, NanosPerSecond);
+  end;
+  Result := FormatDateTime('yyyy"-"mm"-"dd"T"hh":"nn":"ss', UnixToDateTime(Seconds, True)) +
+    Format('.%.9dZ', [Nanos]);
 end;
 
 constructor TStoolapAdapter.Create(const Config: TStoolapConfig);
@@ -279,8 +297,10 @@ begin
         Values.Add(TJSONNull.Create)
       else
         case TypeCode of
-          STOOLAP_TYPE_INTEGER, STOOLAP_TYPE_TIMESTAMP:
+          STOOLAP_TYPE_INTEGER:
             Values.Add(FLibrary.RowsColumnInt64(Rows, I));
+          STOOLAP_TYPE_TIMESTAMP:
+            Values.Add(TimestampNsToIsoUtc(FLibrary.RowsColumnInt64(Rows, I)));
           STOOLAP_TYPE_FLOAT:
             Values.Add(FLibrary.RowsColumnDouble(Rows, I));
           STOOLAP_TYPE_BOOLEAN:
