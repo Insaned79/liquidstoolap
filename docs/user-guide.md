@@ -238,6 +238,8 @@ curl -sS \
 
 `params` must be a JSON object. Values may be `null`, boolean, number, or string. Binary values returned by Stoolap are encoded as Base64 strings in JSON result rows.
 
+For SQL commands, parameters are bound through Stoolap's native parameter API. Parameterized `INSERT ... SELECT` is rejected because the current Stoolap native command binding does not reliably propagate parameters inside the `SELECT` part; use literal SQL from trusted code or split the operation into separate parameterized statements.
+
 One `/sql` request executes one SQL statement. Multi-statement scripts are rejected.
 
 Query response:
@@ -292,6 +294,8 @@ For manual work, use `connect`. It behaves like a small SQL shell:
 
 When `--password-file` is omitted, `connect` asks for the password interactively without echoing it. You can still pass `--password-file ./secrets/admin.password` for scripts.
 
+When `connect` authenticates with `--username`, it refreshes issued bearer tokens automatically before expiry and retries once after `401 invalid_token`. Sessions started with `--token` use that token as-is; static tokens cannot be refreshed by the CLI.
+
 Inside the shell, enter SQL terminated by `;`:
 
 ```sql
@@ -324,6 +328,8 @@ Run one SQL statement without entering the shell:
 ```
 
 Use `--format json` when scripts need the original REST response envelope.
+
+The default table formatter calculates UTF-8 display width, so Cyrillic text stays aligned in ASCII tables.
 
 CLI `--param` values parse `null`, `true`, `false`, integers, and floats as JSON scalar values. Other values are sent as strings.
 

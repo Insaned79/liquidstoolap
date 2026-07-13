@@ -32,12 +32,46 @@ implementation
 
 function NewToken: string;
 var
-  Id: TGuid;
+  Bytes: array[0..31] of Byte;
+  Stream: TFileStream;
+  I: Integer;
 begin
-  if CreateGUID(Id) = 0 then
-    Result := 'lst_' + StringReplace(StringReplace(GUIDToString(Id), '{', '', []), '}', '', [])
-  else
-    Result := 'lst_' + IntToStr(Random(MaxInt)) + IntToStr(Random(MaxInt));
+  Stream := TFileStream.Create('/dev/urandom', fmOpenRead or fmShareDenyNone);
+  try
+    Stream.ReadBuffer(Bytes, SizeOf(Bytes));
+  finally
+    Stream.Free;
+  end;
+
+  Result := 'lst_';
+  for I := Low(Bytes) to High(Bytes) do
+    Result := Result + LowerCase(IntToHex(Bytes[I], 2));
+end;
+
+function ConstantTimeEqual(const Left, Right: string): Boolean;
+var
+  I: Integer;
+  MaxLen: Integer;
+  Diff: Byte;
+  L, R: Byte;
+begin
+  Diff := Byte(Length(Left) xor Length(Right));
+  MaxLen := Length(Left);
+  if Length(Right) > MaxLen then
+    MaxLen := Length(Right);
+  for I := 1 to MaxLen do
+  begin
+    if I <= Length(Left) then
+      L := Ord(Left[I]) and $FF
+    else
+      L := 0;
+    if I <= Length(Right) then
+      R := Ord(Right[I]) and $FF
+    else
+      R := 0;
+    Diff := Diff or (L xor R);
+  end;
+  Result := Diff = 0;
 end;
 
 constructor TAuthService.Create(const Config: TAuthConfig);
@@ -75,6 +109,8 @@ begin
     if List.Count = 0 then
       raise EAuthError.Create('password file is empty: ' + FileName);
     Result := Trim(List[0]);
+    if Result = '' then
+      raise EAuthError.Create('password file password is empty: ' + FileName);
   finally
     List.Free;
   end;
@@ -119,9 +155,19 @@ function TAuthService.IsIssuedTokenValid(const Token: string): Boolean;
 var
   Raw: string;
   ExpiresAt: TDateTime;
+  I: Integer;
+  MatchIndex: Integer;
 begin
-  Raw := FIssuedTokens.Values[Token];
-  if Raw = '' then
+  Raw := '';
+  MatchIndex := -1;
+  for I := 0 to FIssuedTokens.Count - 1 do
+    if ConstantTimeEqual(FIssuedTokens.Names[I], Token) then
+    begin
+      Raw := FIssuedTokens.ValueFromIndex[I];
+      MatchIndex := I;
+    end;
+
+  if (MatchIndex < 0) or (Raw = '') then
     Exit(False);
 
   try
@@ -132,7 +178,7 @@ begin
 
   if Now > ExpiresAt then
   begin
-    FIssuedTokens.Delete(FIssuedTokens.IndexOfName(Token));
+    FIssuedTokens.Delete(MatchIndex);
     Exit(False);
   end;
 
@@ -151,8 +197,10 @@ begin
   ExpiresIn := FConfig.TokenTtlSeconds;
   if (not FConfig.Enabled) or (not FConfig.IssueTokens) then
     raise EAuthError.Create('token issuing is disabled');
+  if FPassword = '' then
+    raise EAuthError.Create('password authentication is not configured');
 
-  Result := (Username = FConfig.Username) and (Password = FPassword);
+  Result := ConstantTimeEqual(Username, FConfig.Username) and ConstantTimeEqual(Password, FPassword);
   if Result then
   begin
     Token := NewToken;
@@ -163,15 +211,20 @@ end;
 function TAuthService.ValidateBearer(const AuthorizationHeader: string): Boolean;
 var
   Token: string;
+  I: Integer;
 const
   Prefix = 'Bearer ';
 begin
+  Result := False;
   if not FConfig.Enabled then
     Exit(True);
   if Pos(Prefix, AuthorizationHeader) <> 1 then
     Exit(False);
   Token := Copy(AuthorizationHeader, Length(Prefix) + 1, MaxInt);
-  Result := (FStaticTokens.IndexOf(Token) >= 0) or IsIssuedTokenValid(Token);
+  for I := 0 to FStaticTokens.Count - 1 do
+    if ConstantTimeEqual(FStaticTokens[I], Token) then
+      Result := True;
+  Result := Result or IsIssuedTokenValid(Token);
 end;
 
 end.

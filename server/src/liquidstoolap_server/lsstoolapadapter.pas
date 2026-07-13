@@ -26,6 +26,7 @@ type
     function EffectivePoolSize: Integer;
     function LastDbError(Db: PStoolapDB): string;
     function IsQuerySql(const Sql: string): Boolean;
+    function IsReadOnlySql(const Sql: string): Boolean;
     function RowsToJson(Rows: PStoolapRows): TJSONObject;
     function AcquireDb(const TimeoutMs: Int64; out PoolIndex: Integer): PStoolapDB;
     procedure ReleaseDb(const PoolIndex: Integer);
@@ -43,6 +44,10 @@ type
   end;
 
 implementation
+
+type
+  TStoolapValueArray = array of TStoolapValue;
+  TRawByteStringArray = array of RawByteString;
 
 function Utf8Bytes(const Value: string): RawByteString;
 begin
@@ -144,6 +149,23 @@ begin
   S := UpperCase(Trim(Sql));
   Result := (Pos('SELECT', S) = 1) or (Pos('WITH', S) = 1) or
     (Pos('SHOW', S) = 1) or (Pos('EXPLAIN', S) = 1);
+end;
+
+function TStoolapAdapter.IsReadOnlySql(const Sql: string): Boolean;
+var
+  S: string;
+begin
+  S := UpperCase(Trim(Sql));
+  Result := (Pos('SELECT', S) = 1) or (Pos('SHOW', S) = 1) or
+    ((Pos('EXPLAIN', S) = 1) and (Pos('EXPLAIN ANALYZE', S) <> 1));
+end;
+
+function IsParameterizedInsertSelect(const Sql: string): Boolean;
+var
+  S: string;
+begin
+  S := UpperCase(Trim(Sql));
+  Result := (Pos('INSERT', S) = 1) and (Pos(' SELECT ', S) > 0);
 end;
 
 procedure TStoolapAdapter.OpenUnlocked;
@@ -301,12 +323,54 @@ begin
   end;
 end;
 
+procedure AssignJsonValue(Value: TJSONData; out Target: TStoolapValue; var TextValue: RawByteString;
+  const ParamName: string);
+var
+  RawNumber: string;
+begin
+  Target.Padding := 0;
+  case Value.JSONType of
+    jtNull:
+      Target.ValueType := STOOLAP_TYPE_NULL;
+    jtBoolean:
+      begin
+        Target.ValueType := STOOLAP_TYPE_BOOLEAN;
+        if Value.AsBoolean then
+          Target.V.BooleanValue := 1
+        else
+          Target.V.BooleanValue := 0;
+      end;
+    jtNumber:
+      begin
+        RawNumber := LowerCase(Value.AsJSON);
+        if (Pos('.', RawNumber) > 0) or (Pos('e', RawNumber) > 0) then
+        begin
+          Target.ValueType := STOOLAP_TYPE_FLOAT;
+          Target.V.FloatValue := Value.AsFloat;
+        end
+        else
+        begin
+          Target.ValueType := STOOLAP_TYPE_INTEGER;
+          Target.V.IntegerValue := Value.AsInt64;
+        end;
+      end;
+    jtString:
+      begin
+        TextValue := Utf8Bytes(Value.AsString);
+        Target.ValueType := STOOLAP_TYPE_TEXT;
+        Target.V.TextValue.Ptr := PChar(TextValue);
+        Target.V.TextValue.Len := Length(TextValue);
+      end;
+  else
+    raise EStoolapAdapterError.Create('unsupported SQL parameter type for ' + ParamName);
+  end;
+end;
+
 procedure BuildNamedParams(ParamsObject: TJSONObject; out Params: array of TStoolapNamedParam;
   out Names: array of RawByteString; out TextValues: array of RawByteString);
 var
   I: Integer;
   Item: TJSONEnum;
-  Value: TJSONData;
 begin
   if ParamsObject = nil then
     Exit;
@@ -318,69 +382,8 @@ begin
     Params[I].Name := PChar(Names[I]);
     Params[I].NameLen := Length(Names[I]);
     Params[I].Padding := 0;
-    Value := Item.Value;
-
-    case Value.JSONType of
-      jtNull:
-        Params[I].Value.ValueType := STOOLAP_TYPE_NULL;
-      jtBoolean:
-        begin
-          Params[I].Value.ValueType := STOOLAP_TYPE_BOOLEAN;
-          if Value.AsBoolean then
-            Params[I].Value.V.BooleanValue := 1
-          else
-            Params[I].Value.V.BooleanValue := 0;
-        end;
-      jtNumber:
-        begin
-          if Pos('.', Value.AsJSON) > 0 then
-          begin
-            Params[I].Value.ValueType := STOOLAP_TYPE_FLOAT;
-            Params[I].Value.V.FloatValue := Value.AsFloat;
-          end
-          else
-          begin
-            Params[I].Value.ValueType := STOOLAP_TYPE_INTEGER;
-            Params[I].Value.V.IntegerValue := Value.AsInt64;
-          end;
-        end;
-      jtString:
-        begin
-          TextValues[I] := Utf8Bytes(Value.AsString);
-          Params[I].Value.ValueType := STOOLAP_TYPE_TEXT;
-          Params[I].Value.V.TextValue.Ptr := PChar(TextValues[I]);
-          Params[I].Value.V.TextValue.Len := Length(TextValues[I]);
-        end;
-    else
-      raise EStoolapAdapterError.Create('unsupported SQL parameter type for ' + Item.Key);
-    end;
-    Params[I].Value.Padding := 0;
+    AssignJsonValue(Item.Value, Params[I].Value, TextValues[I], Item.Key);
     Inc(I);
-  end;
-end;
-
-function SqlLiteral(Value: TJSONData): string;
-var
-  Raw: string;
-begin
-  case Value.JSONType of
-    jtNull:
-      Result := 'NULL';
-    jtBoolean:
-      if Value.AsBoolean then
-        Result := 'TRUE'
-      else
-        Result := 'FALSE';
-    jtNumber:
-      Result := Value.AsJSON;
-    jtString:
-      begin
-        Raw := Value.AsString;
-        Raw := StringReplace(Raw, '''', '''''', [rfReplaceAll]);
-        Result := '''' + Raw + '''';
-      end;
-  else
-    raise EStoolapAdapterError.Create('unsupported SQL parameter type');
   end;
 end;
 
@@ -394,7 +397,8 @@ begin
   Result := IsIdentifierStart(Ch) or (Ch in ['0'..'9']);
 end;
 
-function MaterializeNamedParams(const Sql: string; Params: TJSONObject): string;
+procedure BuildPositionalCommandParams(const Sql: string; Params: TJSONObject; out RewrittenSql: string;
+  out Values: TStoolapValueArray; out TextValues: TRawByteStringArray);
 var
   I: Integer;
   Start: Integer;
@@ -402,8 +406,12 @@ var
   Value: TJSONData;
   InSingleQuote: Boolean;
   InDoubleQuote: Boolean;
+  ParamIndex: Integer;
 begin
-  Result := '';
+  RewrittenSql := '';
+  SetLength(Values, 0);
+  SetLength(TextValues, 0);
+  ParamIndex := 0;
   I := 1;
   InSingleQuote := False;
   InDoubleQuote := False;
@@ -412,13 +420,13 @@ begin
   begin
     if InSingleQuote then
     begin
-      Result := Result + Sql[I];
+      RewrittenSql := RewrittenSql + Sql[I];
       if Sql[I] = '''' then
       begin
         if (I < Length(Sql)) and (Sql[I + 1] = '''') then
         begin
           Inc(I);
-          Result := Result + Sql[I];
+          RewrittenSql := RewrittenSql + Sql[I];
         end
         else
           InSingleQuote := False;
@@ -429,13 +437,13 @@ begin
 
     if InDoubleQuote then
     begin
-      Result := Result + Sql[I];
+      RewrittenSql := RewrittenSql + Sql[I];
       if Sql[I] = '"' then
       begin
         if (I < Length(Sql)) and (Sql[I + 1] = '"') then
         begin
           Inc(I);
-          Result := Result + Sql[I];
+          RewrittenSql := RewrittenSql + Sql[I];
         end
         else
           InDoubleQuote := False;
@@ -447,7 +455,7 @@ begin
     if Sql[I] = '''' then
     begin
       InSingleQuote := True;
-      Result := Result + Sql[I];
+      RewrittenSql := RewrittenSql + Sql[I];
       Inc(I);
       Continue;
     end;
@@ -455,7 +463,7 @@ begin
     if Sql[I] = '"' then
     begin
       InDoubleQuote := True;
-      Result := Result + Sql[I];
+      RewrittenSql := RewrittenSql + Sql[I];
       Inc(I);
       Continue;
     end;
@@ -471,11 +479,15 @@ begin
       Value := Params.Find(ParamName);
       if Value = nil then
         raise EStoolapAdapterError.Create('missing SQL parameter: ' + ParamName);
-      Result := Result + SqlLiteral(Value);
+      Inc(ParamIndex);
+      SetLength(Values, ParamIndex);
+      SetLength(TextValues, ParamIndex);
+      AssignJsonValue(Value, Values[ParamIndex - 1], TextValues[ParamIndex - 1], ParamName);
+      RewrittenSql := RewrittenSql + '$' + IntToStr(ParamIndex);
       Continue;
     end;
 
-    Result := Result + Sql[I];
+    RewrittenSql := RewrittenSql + Sql[I];
     Inc(I);
   end;
 end;
@@ -620,14 +632,28 @@ var
   Status: Integer;
   RowsAffected: Int64;
   SqlBytes: RawByteString;
-  EffectiveSql: string;
+  RewrittenSql: string;
+  PositionalParams: TStoolapValueArray;
+  TextValues: TRawByteStringArray;
 begin
-  EffectiveSql := Sql;
-  if (Params <> nil) and (Params.Count > 0) then
-    EffectiveSql := MaterializeNamedParams(Sql, Params);
-  SqlBytes := Utf8Bytes(EffectiveSql);
   RowsAffected := 0;
-  Status := FLibrary.ExecNamedTimeout(Db, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
+  if (Params <> nil) and (Params.Count > 0) then
+  begin
+    if IsParameterizedInsertSelect(Sql) then
+      raise EStoolapAdapterError.Create(
+        'parameterized INSERT ... SELECT is not supported by the Stoolap native parameter binding');
+    BuildPositionalCommandParams(Sql, Params, RewrittenSql, PositionalParams, TextValues);
+    SqlBytes := Utf8Bytes(RewrittenSql);
+    if Length(PositionalParams) > 0 then
+      Status := FLibrary.ExecParams(Db, PChar(SqlBytes), @PositionalParams[0], Length(PositionalParams), @RowsAffected)
+    else
+      Status := FLibrary.ExecParams(Db, PChar(SqlBytes), nil, 0, @RowsAffected);
+  end
+  else
+  begin
+    SqlBytes := Utf8Bytes(Sql);
+    Status := FLibrary.ExecNamedTimeout(Db, PChar(SqlBytes), nil, 0, TimeoutMs, @RowsAffected);
+  end;
 
   if Status <> STOOLAP_OK then
     RaiseBackendError('Stoolap exec failed: ', LastDbError(Db));
@@ -651,10 +677,10 @@ begin
     RemainingTimeoutMs := TimeoutMs - MilliSecondsBetween(Now, StartedAt);
     if RemainingTimeoutMs < 1 then
       raise EStoolapPoolTimeoutError.Create('SQL worker pool wait exceeded timeout_ms');
+    if FConfig.ReadOnly and (not IsReadOnlySql(Sql)) then
+      raise EStoolapAdapterError.Create('Stoolap database is configured read-only; SQL commands are not allowed');
     if IsQuerySql(Sql) then
       Result := QueryJson(Db, Sql, Params, RemainingTimeoutMs)
-    else if FConfig.ReadOnly then
-      raise EStoolapAdapterError.Create('Stoolap database is configured read-only; SQL commands are not allowed')
     else
       Result := CommandJson(Db, Sql, Params, RemainingTimeoutMs);
   finally

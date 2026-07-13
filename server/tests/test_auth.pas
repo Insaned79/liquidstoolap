@@ -100,9 +100,36 @@ begin
   end;
 end;
 
+procedure TestEmptyPasswordFileRejected;
+var
+  Config: TAppConfig;
+  Auth: TAuthService;
+  PasswordFile: string;
+begin
+  SetDefaultConfig(Config);
+  PasswordFile := GetTempDir(False) + DirectorySeparator + 'liquidstoolap-empty-password.txt';
+  WriteTextFile(PasswordFile, LineEnding);
+  Config.Auth.PasswordFile := PasswordFile;
+
+  Auth := nil;
+  try
+    try
+      Auth := TAuthService.Create(Config.Auth);
+      AssertTrue(False, 'empty password file rejected');
+    except
+      on E: EAuthError do
+        AssertTrue(Pos('password is empty', E.Message) > 0, 'empty password error message');
+    end;
+  finally
+    Auth.Free;
+    DeleteFile(PasswordFile);
+  end;
+end;
+
 begin
   TestDisabledAuthAllowsRequests;
   TestIssuedToken;
   TestStaticTokens;
+  TestEmptyPasswordFileRejected;
   WriteLn('test_auth ok');
 end.

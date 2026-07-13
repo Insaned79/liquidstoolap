@@ -16,6 +16,7 @@ sed \
   -e "s#port = 8321#port = $PORT#" \
   -e "s#password_file =#password_file = $PASSWORD_FILE#" \
   -e "s#database_path = ./data/stoolap.db#database_path = memory://#" \
+  -e "s#sql_log = false#sql_log = true#" \
   ../config/config.example.ini > "$CONFIG_FILE"
 
 ./build/liquidstoolap check-config --config "$CONFIG_FILE" >/dev/null
@@ -73,9 +74,26 @@ grep -q '"values" : \[43\]' <<<"$cli_select_response"
 cli_connect_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token" -e "SELECT :id AS id" --param id=44)"
 grep -q '| id |' <<<"$cli_connect_response"
 grep -q '| 44 |' <<<"$cli_connect_response"
+grep -Eq '1 row\(s\) in [0-9]+ ms' <<<"$cli_connect_response"
 
 cli_connect_login_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin --password-file "$PASSWORD_FILE" -e "SELECT 440 AS id")"
 grep -q '| 440 |' <<<"$cli_connect_login_response"
+
+cli_connect_unicode_table="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin --password-file "$PASSWORD_FILE" -e "SELECT 'Батарейка' AS type, 'Дача кухня' AS name")"
+CLI_CONNECT_UNICODE_TABLE="$cli_connect_unicode_table" python3 - <<'PY'
+import os
+
+def display_width(value: str) -> int:
+    return sum(1 for ch in value if ord(ch) >= 0x20)
+
+lines = [
+    line for line in os.environ["CLI_CONNECT_UNICODE_TABLE"].splitlines()
+    if line.startswith("+") or line.startswith("|")
+]
+widths = {display_width(line) for line in lines}
+assert len(widths) == 1, (widths, lines)
+assert "Батарейка" in os.environ["CLI_CONNECT_UNICODE_TABLE"]
+PY
 
 cli_connect_prompt_password_response="$(printf 'secret\n' | ./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin -e "SELECT 441 AS id")"
 grep -q 'Password:' <<<"$cli_connect_prompt_password_response"
@@ -95,10 +113,14 @@ command_response="$(curl -fsS \
   -d '{"sql":"CREATE TABLE smoke_t (id INTEGER)"}')"
 grep -q '"kind" : "command"' <<<"$command_response"
 
+cli_connect_command_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token" -e "INSERT INTO smoke_t VALUES (1)")"
+grep -Eq 'Query OK, [0-9]+ row\(s\) affected in [0-9]+ ms' <<<"$cli_connect_command_response"
+
 python3 - <<PY
 import json
 import threading
 import time
+import urllib.error
 import urllib.request
 
 base = "http://127.0.0.1:$PORT"
@@ -121,11 +143,24 @@ rows = post({"sql": "SELECT name FROM unicode_t"})["result"]["rows"]
 values = [row["values"][0] for row in rows]
 assert values == ["Детская", "Спальня"], values
 
+post({"sql": "CREATE TABLE command_param_t (msg TEXT)"})
+dangerous = "safe'); DROP TABLE command_param_t; --"
+post({"sql": "INSERT INTO command_param_t VALUES (:msg)", "params": {"msg": dangerous}})
+command_param_rows = post({"sql": "SELECT msg FROM command_param_t"})["result"]["rows"]
+assert command_param_rows[0]["values"] == [dangerous], command_param_rows
+
 post({"sql": "CREATE TABLE insert_select_t (id INTEGER, name TEXT, ts TIMESTAMP, v FLOAT)"})
-post({
-    "sql": "INSERT INTO insert_select_t (id, name, ts, v) SELECT COALESCE(max(id), 0) + 1, :name, :ts, :v FROM insert_select_t",
-    "params": {"name": "Спальня", "ts": "2026-07-12 13:14:15.123", "v": 42.5},
-})
+try:
+    post({
+        "sql": "INSERT INTO insert_select_t (id, name, ts, v) SELECT COALESCE(max(id), 0) + 1, :name, :ts, :v FROM insert_select_t",
+        "params": {"name": "Спальня", "ts": "2026-07-12 13:14:15.123", "v": 42.5},
+    })
+    raise AssertionError("parameterized INSERT ... SELECT should be rejected")
+except urllib.error.HTTPError as exc:
+    assert exc.code == 422, exc.code
+    body = exc.read().decode("utf-8")
+    assert "parameterized INSERT" in body, body
+post({"sql": "INSERT INTO insert_select_t (id, name, ts, v) SELECT COALESCE(max(id), 0) + 1, 'Спальня', '2026-07-12 13:14:15.123', 42.5 FROM insert_select_t"})
 insert_select = post({"sql": "SELECT id, name, ts, v FROM insert_select_t"})["result"]
 assert insert_select["rows"][0]["values"] == [1, "Спальня", "2026-07-12T13:14:15.123000000Z", 42.5], insert_select
 
@@ -135,6 +170,15 @@ timestamp_result = post({"sql": "SELECT ts FROM timestamp_t"})["result"]
 assert timestamp_result["types"] == ["TIMESTAMP"], timestamp_result
 timestamp_value = timestamp_result["rows"][0]["values"][0]
 assert timestamp_value == "2026-01-02T03:04:05.000000000Z", timestamp_value
+
+post({"sql": "SELECT 'line\nbreak' AS value"})
+time.sleep(0.1)
+with open("$LOG_FILE", encoding="utf-8") as log_file:
+    sql_log_lines = [line for line in log_file if '"message":"sql"' in line]
+assert sql_log_lines, "SQL log line missing"
+for line in sql_log_lines:
+    json.loads(line)
+assert any("\\n" in line and "line" in line and "break" in line for line in sql_log_lines), sql_log_lines[-5:]
 
 long_done = threading.Event()
 long_error = []
@@ -382,6 +426,14 @@ readonly_command_status="$(curl -sS -o /tmp/liquidstoolap-readonly-command.json 
 test "$readonly_command_status" = "422"
 grep -q 'read-only' /tmp/liquidstoolap-readonly-command.json
 
+readonly_with_status="$(curl -sS -o /tmp/liquidstoolap-readonly-with.json -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$PORT/sql" \
+  -H "Authorization: Bearer $readonly_token" \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"WITH x AS (SELECT 1) SELECT 1"}')"
+test "$readonly_with_status" = "422"
+grep -q 'read-only' /tmp/liquidstoolap-readonly-with.json
+
 cleanup
 trap - EXIT
 
@@ -515,6 +567,16 @@ ttl_token_response="$(curl -fsS \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"secret"}')"
 ttl_token="$(sed -n 's/.*"access_token" : "\([^"]*\)".*/\1/p' <<<"$ttl_token_response")"
+ttl_cli_connect_response="$(
+  {
+    printf 'SELECT 901 AS id;\n'
+    sleep 2
+    printf 'SELECT 902 AS id;\n'
+    printf '.quit\n'
+  } | ./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin --password-file "$PASSWORD_FILE"
+)"
+grep -q '| 901 |' <<<"$ttl_cli_connect_response"
+grep -q '| 902 |' <<<"$ttl_cli_connect_response"
 sleep 2
 expired_status="$(curl -sS -o /tmp/liquidstoolap-expired.json -w '%{http_code}' \
   -X POST "http://127.0.0.1:$PORT/sql" \

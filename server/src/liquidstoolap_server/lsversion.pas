@@ -5,7 +5,7 @@ unit lsversion;
 interface
 
 const
-  LIQUID_STOOLAP_VERSION = '0.1.5';
+  LIQUID_STOOLAP_VERSION = '0.1.6';
 
 implementation
 

@@ -238,6 +238,8 @@ curl -sS \
 
 `params` должен быть JSON object. Значения могут быть `null`, boolean, number или string. Binary values, возвращённые Stoolap, кодируются как Base64 strings в JSON result rows.
 
+Для SQL-команд параметры привязываются через native parameter API Stoolap. Parameterized `INSERT ... SELECT` отклоняется, потому что текущий native command binding Stoolap ненадёжно передаёт параметры внутрь части `SELECT`; используйте literal SQL только из доверенного кода или разбивайте операцию на отдельные parameterized statements.
+
 Один `/sql` request выполняет один SQL statement. Multi-statement scripts отклоняются.
 
 Query response:
@@ -292,6 +294,8 @@ Server binary также включает client commands:
 
 Если `--password-file` не передан, `connect` спросит пароль интерактивно без отображения ввода. Для scripts можно по-прежнему передать `--password-file ./secrets/admin.password`.
 
+Если `connect` аутентифицируется через `--username`, он автоматически обновляет issued bearer tokens перед истечением и один раз повторяет запрос после `401 invalid_token`. Сессии, запущенные с `--token`, используют этот token как есть; static tokens CLI обновлять не может.
+
 Внутри shell вводите SQL, заканчивая statement символом `;`:
 
 ```sql
@@ -324,6 +328,8 @@ Shell commands:
 ```
 
 Используйте `--format json`, если scripts нужен исходный REST response envelope.
+
+Default table formatter считает display width UTF-8, поэтому кириллица остаётся выровненной в ASCII tables.
 
 CLI `--param` values разбирает `null`, `true`, `false`, integers и floats как JSON scalar values. Остальные значения отправляются как strings.
 

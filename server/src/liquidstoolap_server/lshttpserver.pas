@@ -66,9 +66,36 @@ begin
 end;
 
 function JsonEscape(const S: string): string;
+var
+  I: Integer;
+  Ch: Char;
 begin
-  Result := StringReplace(S, '\', '\\', [rfReplaceAll]);
-  Result := StringReplace(Result, '"', '\"', [rfReplaceAll]);
+  Result := '';
+  for I := 1 to Length(S) do
+  begin
+    Ch := S[I];
+    case Ch of
+      '\':
+        Result := Result + '\\';
+      '"':
+        Result := Result + '\"';
+      #8:
+        Result := Result + '\b';
+      #9:
+        Result := Result + '\t';
+      #10:
+        Result := Result + '\n';
+      #12:
+        Result := Result + '\f';
+      #13:
+        Result := Result + '\r';
+    else
+      if Ord(Ch) < 32 then
+        Result := Result + '\u' + LowerCase(IntToHex(Ord(Ch), 4))
+      else
+        Result := Result + Ch;
+    end;
+  end;
 end;
 
 constructor TLiquidStoolapHttpServer.Create(const Config: TAppConfig);

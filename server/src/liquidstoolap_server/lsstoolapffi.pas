@@ -68,6 +68,8 @@ type
   TStoolapCloseFunc = function(Db: PStoolapDB): cint; cdecl;
   TStoolapErrmsgFunc = function(Db: PStoolapDB): PChar; cdecl;
   TStoolapExecFunc = function(Db: PStoolapDB; Sql: PChar; RowsAffected: PInt64): cint; cdecl;
+  TStoolapExecParamsFunc = function(Db: PStoolapDB; Sql: PChar; Params: PStoolapValue;
+    ParamsLen: cint; RowsAffected: PInt64): cint; cdecl;
   TStoolapExecNamedFunc = function(Db: PStoolapDB; Sql: PChar; Params: PStoolapNamedParam;
     ParamsLen: cint; RowsAffected: PInt64): cint; cdecl;
   TStoolapExecNamedTimeoutFunc = function(Db: PStoolapDB; Sql: PChar; Params: PStoolapNamedParam;
@@ -102,6 +104,7 @@ type
     FClose: TStoolapCloseFunc;
     FErrmsg: TStoolapErrmsgFunc;
     FExec: TStoolapExecFunc;
+    FExecParams: TStoolapExecParamsFunc;
     FExecNamed: TStoolapExecNamedFunc;
     FExecNamedTimeout: TStoolapExecNamedTimeoutFunc;
     FQuery: TStoolapQueryFunc;
@@ -131,6 +134,7 @@ type
     property Close: TStoolapCloseFunc read FClose;
     property Errmsg: TStoolapErrmsgFunc read FErrmsg;
     property Exec: TStoolapExecFunc read FExec;
+    property ExecParams: TStoolapExecParamsFunc read FExecParams;
     property ExecNamed: TStoolapExecNamedFunc read FExecNamed;
     property ExecNamedTimeout: TStoolapExecNamedTimeoutFunc read FExecNamedTimeout;
     property Query: TStoolapQueryFunc read FQuery;
@@ -184,6 +188,7 @@ begin
   RequireSymbol('stoolap_close', Pointer(FClose));
   RequireSymbol('stoolap_errmsg', Pointer(FErrmsg));
   RequireSymbol('stoolap_exec', Pointer(FExec));
+  RequireSymbol('stoolap_exec_params', Pointer(FExecParams));
   RequireSymbol('stoolap_exec_named', Pointer(FExecNamed));
   RequireSymbol('stoolap_exec_named_timeout', Pointer(FExecNamedTimeout));
   RequireSymbol('stoolap_query', Pointer(FQuery));

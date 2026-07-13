@@ -222,11 +222,28 @@ Interactive SQL shell:
 
 If `--password-file` is omitted, `connect` prompts for the password interactively. The shell uses command history and cursor editing when `libreadline` is available.
 
+When the shell is started with `--username`, it keeps the issued bearer token fresh automatically and retries once after `401 invalid_token`. When it is started with `--token`, the provided token is used as-is.
+
+The default output is a MySQL-style table. It includes server-side SQL duration next to the row count and keeps UTF-8/Cyrillic text aligned:
+
+```text
++--------+
+| answer |
++--------+
+| 42     |
++--------+
+1 row(s) in 0 ms
+```
+
+Switch output inside the shell with `.format json` or `.format table`.
+
 One-shot SQL from the command line:
 
 ```bash
 ./build/liquidstoolap connect --url http://127.0.0.1:8321 --token "$TOKEN" -e "SELECT 42 AS answer"
 ```
+
+Use `--format json` for scripts that need the original REST response envelope.
 
 ### Python SDK
 
@@ -524,11 +541,28 @@ curl -sS \
 
 Если `--password-file` не передан, `connect` интерактивно спросит пароль. Shell использует историю команд и редактирование строки, если доступен `libreadline`.
 
+Если shell запущен с `--username`, он сам обновляет issued bearer token и один раз повторяет запрос после `401 invalid_token`. Если shell запущен с `--token`, переданный token используется как есть.
+
+По умолчанию вывод используется в MySQL-style table. Рядом с количеством строк показывается server-side SQL duration, а UTF-8/кириллица остаётся выровненной:
+
+```text
++--------+
+| answer |
++--------+
+| 42     |
++--------+
+1 row(s) in 0 ms
+```
+
+Формат можно переключать внутри shell командами `.format json` и `.format table`.
+
 Выполнить один SQL из командной строки:
 
 ```bash
 ./build/liquidstoolap connect --url http://127.0.0.1:8321 --token "$TOKEN" -e "SELECT 42 AS answer"
 ```
+
+Для scripts, которым нужен исходный REST response envelope, используйте `--format json`.
 
 ### Python SDK
 

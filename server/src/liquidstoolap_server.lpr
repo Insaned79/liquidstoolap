@@ -14,6 +14,15 @@ type
   TAddHistoryFunc = procedure(Line: PChar); cdecl;
   TReadHistoryFunc = function(FileName: PChar): cint; cdecl;
   TWriteHistoryFunc = function(FileName: PChar): cint; cdecl;
+  TCliAuthState = record
+    Url: string;
+    Token: string;
+    StaticToken: Boolean;
+    Username: string;
+    PasswordFile: string;
+    Password: string;
+    ExpiresAt: TDateTime;
+  end;
 
 var
   ReadlineHandle: TLibHandle = NilHandle;
@@ -406,18 +415,14 @@ begin
   end;
 end;
 
-function IssueToken(const Url, Username, PasswordFile: string): string;
+function IssueTokenWithPassword(const Url, Username, Password: string; out ExpiresAt: TDateTime): string;
 var
   StatusCode: Integer;
   Body: string;
   Data: TJSONData;
-  Password: string;
+  TokenObject: TJSONObject;
+  ExpiresIn: Int64;
 begin
-  if PasswordFile <> '' then
-    Password := ReadFirstLine(PasswordFile)
-  else
-    Password := ReadPasswordFromTerminal('Password: ');
-
   Body := HttpPostJson(
     Url + '/auth/token',
     '{"username":' + JsonString(Username) + ',"password":' + JsonString(Password) + '}',
@@ -429,12 +434,27 @@ begin
 
   Data := GetJSON(Body);
   try
-    Result := TJSONObject(Data).Objects['token'].Get('access_token', '');
+    TokenObject := TJSONObject(Data).Objects['token'];
+    Result := TokenObject.Get('access_token', '');
+    ExpiresIn := TokenObject.Get('expires_in', Int64(3600));
   finally
     Data.Free;
   end;
   if Result = '' then
     raise Exception.Create('auth response did not include access_token');
+  ExpiresAt := Now + (ExpiresIn / 86400);
+end;
+
+function IssueToken(const Url, Username, PasswordFile: string): string;
+var
+  Password: string;
+  ExpiresAt: TDateTime;
+begin
+  if PasswordFile <> '' then
+    Password := ReadFirstLine(PasswordFile)
+  else
+    Password := ReadPasswordFromTerminal('Password: ');
+  Result := IssueTokenWithPassword(Url, Username, Password, ExpiresAt);
 end;
 
 function CliAuthToken(const Url: string): string;
@@ -630,6 +650,36 @@ begin
   FillChar(Result[1], Count, Ord(Ch));
 end;
 
+function Utf8DisplayWidth(const Value: string): Integer;
+var
+  I: Integer;
+  B: Byte;
+begin
+  Result := 0;
+  I := 1;
+  while I <= Length(Value) do
+  begin
+    B := Ord(Value[I]);
+    if B < $20 then
+    begin
+      Inc(I);
+      Continue;
+    end;
+
+    Inc(Result);
+    if B < $80 then
+      Inc(I)
+    else if (B and $E0) = $C0 then
+      Inc(I, 2)
+    else if (B and $F0) = $E0 then
+      Inc(I, 3)
+    else if (B and $F8) = $F0 then
+      Inc(I, 4)
+    else
+      Inc(I);
+  end;
+end;
+
 procedure PrintTableSeparator(const Widths: array of Integer);
 var
   I: Integer;
@@ -646,7 +696,7 @@ var
 begin
   Write('|');
   for I := 0 to High(Widths) do
-    Write(' ', Values[I], RepeatChar(' ', Widths[I] - Length(Values[I]) + 1), '|');
+    Write(' ', Values[I], RepeatChar(' ', Widths[I] - Utf8DisplayWidth(Values[I]) + 1), '|');
   WriteLn;
 end;
 
@@ -655,6 +705,7 @@ var
   Data: TJSONData;
   ResultObj: TJSONObject;
   Kind: string;
+  DurationMs: Int64;
   Columns: TJSONArray;
   Rows: TJSONArray;
   RowValues: TJSONArray;
@@ -673,12 +724,16 @@ begin
       Exit;
     end;
 
+    DurationMs := TJSONObject(Data).Get('duration_ms', Int64(-1));
     ResultObj := TJSONObject(Data).Objects['result'];
     Kind := ResultObj.Get('kind', '');
     if Kind = 'command' then
     begin
       AffectedRows := ResultObj.Get('affected_rows', Int64(0));
-      WriteLn('Query OK, ', AffectedRows, ' row(s) affected');
+      Write('Query OK, ', AffectedRows, ' row(s) affected');
+      if DurationMs >= 0 then
+        Write(' in ', DurationMs, ' ms');
+      WriteLn;
       Exit;
     end;
 
@@ -697,7 +752,7 @@ begin
     for I := 0 to Columns.Count - 1 do
     begin
       Header[I] := Columns.Strings[I];
-      Widths[I] := Length(Header[I]);
+      Widths[I] := Utf8DisplayWidth(Header[I]);
     end;
 
     for R := 0 to Rows.Count - 1 do
@@ -706,8 +761,8 @@ begin
       for I := 0 to Columns.Count - 1 do
       begin
         RowText[I] := JsonValueToText(RowValues.Items[I]);
-        if Length(RowText[I]) > Widths[I] then
-          Widths[I] := Length(RowText[I]);
+        if Utf8DisplayWidth(RowText[I]) > Widths[I] then
+          Widths[I] := Utf8DisplayWidth(RowText[I]);
       end;
     end;
 
@@ -722,7 +777,10 @@ begin
       PrintTableRow(RowText, Widths);
     end;
     PrintTableSeparator(Widths);
-    WriteLn(Rows.Count, ' row(s)');
+    Write(Rows.Count, ' row(s)');
+    if DurationMs >= 0 then
+      Write(' in ', DurationMs, ' ms');
+    WriteLn;
   finally
     Data.Free;
   end;
@@ -764,6 +822,87 @@ begin
   Result := 0;
 end;
 
+procedure InitCliAuthState(const Url: string; out Auth: TCliAuthState);
+begin
+  Auth.Url := Url;
+  Auth.Token := ArgValue('--token', '');
+  Auth.StaticToken := Auth.Token <> '';
+  Auth.Username := '';
+  Auth.PasswordFile := '';
+  Auth.Password := '';
+  Auth.ExpiresAt := 0;
+  if Auth.StaticToken then
+    Exit;
+
+  Auth.Username := ArgValue('--username', 'admin');
+  Auth.PasswordFile := ArgValue('--password-file', '');
+  if Auth.PasswordFile <> '' then
+    Auth.Password := ReadFirstLine(Auth.PasswordFile)
+  else
+    Auth.Password := ReadPasswordFromTerminal('Password: ');
+  Auth.Token := IssueTokenWithPassword(Auth.Url, Auth.Username, Auth.Password, Auth.ExpiresAt);
+end;
+
+procedure RefreshCliAuthToken(var Auth: TCliAuthState);
+begin
+  if Auth.StaticToken then
+    Exit;
+  Auth.Token := IssueTokenWithPassword(Auth.Url, Auth.Username, Auth.Password, Auth.ExpiresAt);
+end;
+
+procedure EnsureCliAuthTokenFresh(var Auth: TCliAuthState);
+begin
+  if Auth.StaticToken then
+    Exit;
+  if (Auth.ExpiresAt <= 0) or (Now + (60 / 86400) >= Auth.ExpiresAt) then
+    RefreshCliAuthToken(Auth);
+end;
+
+function ResponseErrorCode(const Body: string): string;
+var
+  Data: TJSONData;
+begin
+  Result := '';
+  try
+    Data := GetJSON(Body);
+  except
+    Exit;
+  end;
+  try
+    if (Data.JSONType = jtObject) and (TJSONObject(Data).Find('error') <> nil) then
+      Result := TJSONObject(Data).Objects['error'].Get('code', '');
+  finally
+    Data.Free;
+  end;
+end;
+
+function ExecuteSqlForCliAuth(var Auth: TCliAuthState; const Sql, OutputFormat: string): Integer;
+var
+  StatusCode: Integer;
+  Body: string;
+begin
+  EnsureCliAuthTokenFresh(Auth);
+  Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token, StatusCode);
+
+  if (StatusCode = 401) and (not Auth.StaticToken) and
+    ((ResponseErrorCode(Body) = 'invalid_token') or (ResponseErrorCode(Body) = 'authentication_required')) then
+  begin
+    RefreshCliAuthToken(Auth);
+    Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token, StatusCode);
+  end;
+
+  PrintSqlResponse(Body, OutputFormat);
+  if StatusCode >= 500 then
+    Exit(4);
+  if (StatusCode = 401) or (StatusCode = 403) then
+    Exit(3);
+  if StatusCode = 422 then
+    Exit(5);
+  if StatusCode >= 400 then
+    Exit(2);
+  Result := 0;
+end;
+
 procedure PrintShellHelp;
 begin
   WriteLn('Commands:');
@@ -777,7 +916,7 @@ end;
 procedure CliConnect;
 var
   Url: string;
-  Token: string;
+  Auth: TCliAuthState;
   ExecuteSql: string;
   OutputFormat: string;
   Line: string;
@@ -793,7 +932,7 @@ begin
   end;
 
   try
-    Token := CliAuthToken(Url);
+    InitCliAuthState(Url, Auth);
   except
     on E: Exception do
     begin
@@ -805,7 +944,7 @@ begin
   ExecuteSql := FirstArgValue('--execute', '-e', '');
   if ExecuteSql <> '' then
   begin
-    Halt(ExecuteSqlForCli(Url, Token, ExecuteSql, OutputFormat));
+    Halt(ExecuteSqlForCliAuth(Auth, ExecuteSql, OutputFormat));
   end;
 
   WriteLn('Connected to ', Url);
@@ -864,7 +1003,7 @@ begin
 
       if (Trim(SqlBuffer) <> '') and (Trim(SqlBuffer)[Length(Trim(SqlBuffer))] = ';') then
       begin
-        ExitCode := ExecuteSqlForCli(Url, Token, SqlBuffer, OutputFormat);
+        ExitCode := ExecuteSqlForCliAuth(Auth, SqlBuffer, OutputFormat);
         if ExitCode <> 0 then
           WriteLn(StdErr, 'SQL failed with exit code ', ExitCode);
         SqlBuffer := '';
