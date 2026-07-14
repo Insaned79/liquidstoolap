@@ -7,9 +7,9 @@
 ![Python SDK](https://img.shields.io/badge/SDK-Python-yellow.svg)
 ![Node--RED](https://img.shields.io/badge/Node--RED-connector-red.svg)
 
-Lightweight REST access to an embedded Stoolap database.
+Lightweight self-hosted SQL endpoint for local automation, IoT, and edge devices.
 
-Liquid Stoolap is a small self-hosted server for executing SQL over HTTP, with official Python SDK and Node-RED integration. The server is implemented in Free Pascal and talks to Stoolap through the real C FFI library.
+Liquid Stoolap is a ready-to-run persistence service for projects that need a small HTTP-native datastore instead of another custom `FastAPI + SQLite`-style microservice. It exposes SQL over HTTP, ships with an official Python SDK and Node-RED integration, and is powered by the embedded Stoolap engine through the real C FFI library.
 
 > Status: MVP/v1-oriented project. The server, Python SDK, Node-RED connector, OpenAPI contract, tests, and documentation are implemented. JS/TS SDK and public metrics endpoint are intentionally post-1.0 items.
 
@@ -19,7 +19,7 @@ Liquid Stoolap is a small self-hosted server for executing SQL over HTTP, with o
 
 ### What It Is
 
-Liquid Stoolap gives local automation tools, scripts, edge devices, and small self-hosted services a narrow HTTP interface to Stoolap:
+Liquid Stoolap gives local automation tools, scripts, edge devices, and small self-hosted services a shared persistence endpoint:
 
 - `POST /sql` for one SQL statement per request.
 - `POST /auth/token` for token issuance.
@@ -28,7 +28,7 @@ Liquid Stoolap gives local automation tools, scripts, edge devices, and small se
 - Official Python SDK with connector-style UX.
 - Official Node-RED custom node package.
 
-It is intentionally not an ORM, BI server, migration framework, or general data platform.
+It is intentionally not a PostgreSQL/MySQL replacement, ORM, BI server, migration framework, or general data platform. The goal is a compact, well-tested SQL-over-HTTP service that can sit on a Raspberry Pi, mini-PC, automation hub, or local network and be used from Python, Node-RED, shell scripts, dashboards, and simple HTTP clients.
 
 ### Key Features
 
@@ -340,13 +340,15 @@ MIT. See [LICENSE](LICENSE).
 
 ## Русский
 
-Liquid Stoolap - лёгкий self-hosted REST-сервер для выполнения SQL в embedded-базе Stoolap. Сервер написан на Free Pascal и использует реальный Stoolap C FFI adapter.
+Liquid Stoolap - лёгкий self-hosted SQL endpoint для локальной автоматизации, IoT и edge-устройств.
+
+Liquid Stoolap - готовый сервис хранения данных для проектов, которым нужен небольшой HTTP-native datastore вместо очередного самописного микросервиса в стиле `FastAPI + SQLite`. Он выполняет SQL over HTTP, поставляется с официальным Python SDK и Node-RED integration, а внутри использует embedded Stoolap engine через реальный C FFI adapter.
 
 > Статус: проект ориентирован на MVP/v1. Сервер, Python SDK, Node-RED connector, OpenAPI contract, тесты и документация реализованы. JS/TS SDK и публичный metrics endpoint сознательно вынесены за v1.0.
 
 ### Что это
 
-Liquid Stoolap даёт локальным automation-сценариям, скриптам, edge-устройствам и небольшим self-hosted сервисам узкий HTTP-интерфейс к Stoolap:
+Liquid Stoolap даёт локальным automation-сценариям, скриптам, edge-устройствам и небольшим self-hosted сервисам общий persistence endpoint:
 
 - `POST /sql` - один SQL statement на request.
 - `POST /auth/token` - выдача bearer token.
@@ -355,7 +357,7 @@ Liquid Stoolap даёт локальным automation-сценариям, скр
 - Официальный Python SDK с UX как у SQL connectors.
 - Официальный Node-RED custom node package.
 
-Это не ORM, не BI-сервер, не migration framework и не универсальная data platform.
+Это не замена PostgreSQL/MySQL, не ORM, не BI-сервер, не migration framework и не универсальная data platform. Цель проекта - компактный, хорошо протестированный SQL-over-HTTP сервис, который можно поставить на Raspberry Pi, mini-PC, automation hub или локальный сервер и использовать из Python, Node-RED, shell scripts, dashboards и простых HTTP clients.
 
 ### Возможности
 
