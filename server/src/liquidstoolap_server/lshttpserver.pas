@@ -55,6 +55,9 @@ implementation
 uses
   DateUtils, lsversion, lserrors;
 
+const
+  MAX_JSON_DEPTH = 32;
+
 function NewRequestId: string;
 var
   Id: TGuid;
@@ -328,6 +331,12 @@ begin
     Exit;
   end;
 
+  if not IsJsonDepthAllowed(ARequest.Content, MAX_JSON_DEPTH) then
+  begin
+    WriteError(AResponse, 400, RequestId, ERR_INVALID_JSON, 'JSON body is too deeply nested');
+    Exit;
+  end;
+
   try
     Body := GetJSON(ARequest.Content);
   except
@@ -445,6 +454,12 @@ begin
     Exit;
   end;
 
+  if not IsJsonDepthAllowed(ARequest.Content, MAX_JSON_DEPTH) then
+  begin
+    WriteError(AResponse, 400, RequestId, ERR_INVALID_JSON, 'JSON body is too deeply nested');
+    Exit;
+  end;
+
   try
     Body := GetJSON(ARequest.Content);
   except
@@ -530,6 +545,8 @@ begin
       end;
       if TimeoutMs > FConfig.Timeouts.MaxSqlTimeoutMs then
         TimeoutMs := FConfig.Timeouts.MaxSqlTimeoutMs;
+      if (FConfig.Stoolap.BusyTimeoutMs > 0) and (TimeoutMs > FConfig.Stoolap.BusyTimeoutMs) then
+        TimeoutMs := FConfig.Stoolap.BusyTimeoutMs;
     end;
 
     WriteSqlLog(RequestId, Sql, ParamsObject);

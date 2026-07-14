@@ -63,6 +63,15 @@ begin
   end;
 end;
 
+procedure TestJsonDepth;
+begin
+  AssertTrue(IsJsonDepthAllowed('{"sql":"SELECT ''{not depth}''","params":{"x":"[still string]"}}', 4),
+    'brackets inside strings ignored');
+  AssertTrue(IsJsonDepthAllowed('{"a":[{"b":1}]}', 3), 'nested document within limit');
+  AssertTrue(not IsJsonDepthAllowed('{"a":[{"b":1}]}', 2), 'nested document beyond limit');
+  AssertTrue(IsJsonDepthAllowed('{"a":"escaped quote: \" and bracket: {"}', 1), 'escaped quote handled');
+end;
+
 procedure TestScalarParams;
 var
   Obj: TJSONObject;
@@ -88,6 +97,7 @@ begin
   TestMultiStatement;
   TestAllowedKeys;
   TestTimeoutIntegers;
+  TestJsonDepth;
   TestScalarParams;
   WriteLn('test_requestvalidation ok');
 end.

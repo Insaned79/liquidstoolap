@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Security hardening for `0.1.7`: request JSON is rejected before parsing when nesting exceeds the server depth limit.
+- `timeout_ms` can no longer exceed the configured `stoolap.busy_timeout_ms` ceiling.
 - Security hardening for `0.1.6`: SQL command params now use native Stoolap parameter binding instead of SQL text materialization.
 - Hardened read-only SQL gating, bearer-token generation/validation, empty password handling, and JSON log escaping.
 - Added regression smoke tests for command parameter injection, read-only `WITH` rejection, SQL log newline escaping, and ARMHF runtime.

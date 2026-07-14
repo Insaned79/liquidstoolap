@@ -219,6 +219,28 @@ invalid_json_status="$(curl -sS -o /tmp/liquidstoolap-invalid-json.json -w '%{ht
 test "$invalid_json_status" = "400"
 grep -q '"code" : "invalid_json"' /tmp/liquidstoolap-invalid-json.json
 
+deep_json_status="$(python3 - <<PY
+import urllib.error
+import urllib.request
+
+body = '{"sql":"SELECT 1","params":' + '[' * 40 + '0' + ']' * 40 + '}'
+req = urllib.request.Request(
+    "http://127.0.0.1:$PORT/sql",
+    data=body.encode("utf-8"),
+    headers={"Content-Type": "application/json", "Authorization": "Bearer $token"},
+    method="POST",
+)
+try:
+    urllib.request.urlopen(req, timeout=5)
+    print("200")
+except urllib.error.HTTPError as exc:
+    print(exc.code)
+    open("/tmp/liquidstoolap-deep-json.json", "wb").write(exc.read())
+PY
+)"
+test "$deep_json_status" = "400"
+grep -q '"code" : "invalid_json"' /tmp/liquidstoolap-deep-json.json
+
 unknown_field_status="$(curl -sS -o /tmp/liquidstoolap-unknown-field.json -w '%{http_code}' \
   -X POST "http://127.0.0.1:$PORT/sql" \
   -H "Authorization: Bearer $token" \
@@ -273,6 +295,28 @@ bad_token_body_status="$(curl -sS -o /tmp/liquidstoolap-bad-token-body.json -w '
   -d '{"username":"admin","password":"secret","extra":1}' )"
 test "$bad_token_body_status" = "400"
 grep -q '"message" : "unknown field: extra"' /tmp/liquidstoolap-bad-token-body.json
+
+deep_token_status="$(python3 - <<PY
+import urllib.error
+import urllib.request
+
+body = '{"username":' + '[' * 40 + '"admin"' + ']' * 40 + ',"password":"secret"}'
+req = urllib.request.Request(
+    "http://127.0.0.1:$PORT/auth/token",
+    data=body.encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+try:
+    urllib.request.urlopen(req, timeout=5)
+    print("200")
+except urllib.error.HTTPError as exc:
+    print(exc.code)
+    open("/tmp/liquidstoolap-deep-token-json.json", "wb").write(exc.read())
+PY
+)"
+test "$deep_token_status" = "400"
+grep -q '"code" : "invalid_json"' /tmp/liquidstoolap-deep-token-json.json
 
 large_body_status="$(python3 - <<PY
 import json
@@ -467,7 +511,7 @@ busy_timeout_status="$(curl -sS -o /tmp/liquidstoolap-busy-timeout.json -w '%{ht
   -X POST "http://127.0.0.1:$PORT/sql" \
   -H "Authorization: Bearer $busy_token" \
   -H 'Content-Type: application/json' \
-  -d '{"sql":"SELECT SUM(value) FROM generate_series(1, 200000000) AS g(value)"}')"
+  -d '{"sql":"SELECT SUM(value) FROM generate_series(1, 200000000) AS g(value)","timeout_ms":5000}')"
 test "$busy_timeout_status" = "504"
 grep -q '"code" : "backend_timeout"' /tmp/liquidstoolap-busy-timeout.json
 

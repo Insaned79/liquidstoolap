@@ -9,6 +9,7 @@ uses
 
 function ContainsMultiStatement(const Sql: string): Boolean;
 function HasOnlyKeys(Obj: TJSONObject; const Allowed: array of string; out BadKey: string): Boolean;
+function IsJsonDepthAllowed(const Source: string; const MaxDepth: Integer): Boolean;
 function IsJsonInteger(Value: TJSONData): Boolean;
 function IsScalarJsonValue(Value: TJSONData): Boolean;
 function ValidateScalarParams(ParamsObject: TJSONObject; out BadKey: string): Boolean;
@@ -57,6 +58,56 @@ begin
       Exit(False);
     end;
   end;
+end;
+
+function IsJsonDepthAllowed(const Source: string; const MaxDepth: Integer): Boolean;
+var
+  I: Integer;
+  Depth: Integer;
+  InString: Boolean;
+  Escaped: Boolean;
+  Ch: Char;
+begin
+  Result := False;
+  if MaxDepth < 1 then
+    Exit;
+
+  Depth := 0;
+  InString := False;
+  Escaped := False;
+  for I := 1 to Length(Source) do
+  begin
+    Ch := Source[I];
+    if InString then
+    begin
+      if Escaped then
+        Escaped := False
+      else if Ch = '\' then
+        Escaped := True
+      else if Ch = '"' then
+        InString := False;
+      Continue;
+    end;
+
+    case Ch of
+      '"':
+        InString := True;
+      '{', '[':
+        begin
+          Inc(Depth);
+          if Depth > MaxDepth then
+            Exit;
+        end;
+      '}', ']':
+        begin
+          Dec(Depth);
+          if Depth < 0 then
+            Exit;
+        end;
+    end;
+  end;
+
+  Result := True;
 end;
 
 function IsJsonInteger(Value: TJSONData): Boolean;
