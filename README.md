@@ -73,7 +73,7 @@ docker build -t liquidstoolap:latest .
 
 Run `docker build ... .` only from the repository root. The repository contains `.dockerignore`, so the Docker build context stays small; running the same command from your home directory will send unrelated local files to Docker.
 
-The Dockerfile does not build Rust or Free Pascal code. It resolves the latest GitHub release, downloads the matching `liquidstoolap-server-<version>-linux-x86_64.tar.gz` asset, and places it into a small glibc-based runtime image. To pin a version, pass `--build-arg LIQUID_STOOLAP_VERSION=0.1.4`.
+The Dockerfile does not build Rust or Free Pascal code. It resolves the latest GitHub release, downloads the matching `liquidstoolap-server-<version>-linux-x86_64.tar.gz` asset, and places it into a small glibc-based runtime image. To pin a version, pass `--build-arg LIQUID_STOOLAP_VERSION=0.1.7`.
 
 Create a mounted data directory with the Docker config and password file:
 
@@ -119,7 +119,7 @@ Upgrade an existing Docker container:
 
 ```bash
 git pull --ff-only
-docker build -t liquidstoolap:latest .
+docker build --no-cache -t liquidstoolap:latest .
 
 docker rm -f liquidstoolap
 docker run -d \
@@ -132,7 +132,15 @@ docker exec liquidstoolap liquidstoolap --version
 curl -sS http://127.0.0.1:8321/health
 ```
 
-The `docker rm -f` command removes only the container. The database, config, password file, and static token files stay in the mounted `liquid-data` directory. To upgrade to a specific release instead of the latest release, build with `--build-arg LIQUID_STOOLAP_VERSION=0.1.4`.
+The `docker rm -f` command removes only the container. The database, config, password file, and static token files stay in the mounted `liquid-data` directory.
+
+Use `--no-cache` when rebuilding a Docker image that resolves `latest`; otherwise Docker may reuse the old downloaded release layer. To upgrade to a specific release instead of the latest release, build with:
+
+```bash
+docker build --no-cache \
+  --build-arg LIQUID_STOOLAP_VERSION=0.1.7 \
+  -t liquidstoolap:latest .
+```
 
 Stop and remove the container:
 
@@ -392,7 +400,7 @@ docker build -t liquidstoolap:latest .
 
 Запускайте `docker build ... .` только из корня репозитория. В репозитории есть `.dockerignore`, поэтому Docker build context остаётся маленьким; если запустить ту же команду из домашнего каталога, Docker начнёт отправлять посторонние локальные файлы.
 
-Dockerfile не собирает Rust или Free Pascal код. Он определяет latest GitHub release, скачивает подходящий asset `liquidstoolap-server-<version>-linux-x86_64.tar.gz` и кладёт его в небольшой glibc-based runtime image. Чтобы зафиксировать версию, передайте `--build-arg LIQUID_STOOLAP_VERSION=0.1.4`.
+Dockerfile не собирает Rust или Free Pascal код. Он определяет latest GitHub release, скачивает подходящий asset `liquidstoolap-server-<version>-linux-x86_64.tar.gz` и кладёт его в небольшой glibc-based runtime image. Чтобы зафиксировать версию, передайте `--build-arg LIQUID_STOOLAP_VERSION=0.1.7`.
 
 Создайте mounted data directory с Docker config и password file:
 
@@ -438,7 +446,7 @@ curl -sS http://127.0.0.1:8321/health
 
 ```bash
 git pull --ff-only
-docker build -t liquidstoolap:latest .
+docker build --no-cache -t liquidstoolap:latest .
 
 docker rm -f liquidstoolap
 docker run -d \
@@ -451,7 +459,15 @@ docker exec liquidstoolap liquidstoolap --version
 curl -sS http://127.0.0.1:8321/health
 ```
 
-Команда `docker rm -f` удаляет только container. База, config, password file и static token files остаются в mounted directory `liquid-data`. Чтобы обновиться на конкретный release, а не на latest release, собирайте с `--build-arg LIQUID_STOOLAP_VERSION=0.1.4`.
+Команда `docker rm -f` удаляет только container. База, config, password file и static token files остаются в mounted directory `liquid-data`.
+
+Используйте `--no-cache`, когда пересобираете Docker image, который определяет `latest`; иначе Docker может переиспользовать старый layer со скачанным release. Чтобы обновиться на конкретный release, а не на latest release, собирайте так:
+
+```bash
+docker build --no-cache \
+  --build-arg LIQUID_STOOLAP_VERSION=0.1.7 \
+  -t liquidstoolap:latest .
+```
 
 Остановить и удалить container:
 
