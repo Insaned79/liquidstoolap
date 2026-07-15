@@ -18,6 +18,7 @@ class SqlResultSet:
     types: list[str]
     rows: list[Row]
     row_count: int
+    truncated: bool = False
 
     def as_dicts(self) -> list[dict[str, ScalarValue]]:
         return [dict(zip(self.columns, row.values)) for row in self.rows]
@@ -89,6 +90,7 @@ def parse_result(payload: dict[str, Any]) -> SqlResultSet | SqlCommandResult:
             types=list(payload["types"]),
             rows=[Row(values=list(row["values"])) for row in payload["rows"]],
             row_count=int(payload["row_count"]),
+            truncated=bool(payload.get("truncated", False)),
         )
     if kind == "command":
         return SqlCommandResult(

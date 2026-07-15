@@ -24,7 +24,12 @@ begin
   AssertTrue(not ContainsMultiStatement('SELECT 1'), 'single select');
   AssertTrue(not ContainsMultiStatement('SELECT 1;'), 'trailing semicolon');
   AssertTrue(not ContainsMultiStatement('SELECT '';'''), 'semicolon inside string');
+  AssertTrue(not ContainsMultiStatement('SELECT ''a'''';b'''), 'semicolon inside escaped single-quoted string');
+  AssertTrue(not ContainsMultiStatement('SELECT ";";'), 'semicolon inside double-quoted identifier');
+  AssertTrue(not ContainsMultiStatement('SELECT 1 -- ; inside comment' + LineEnding), 'semicolon inside line comment');
+  AssertTrue(not ContainsMultiStatement('SELECT 1 /* ; inside comment */'), 'semicolon inside block comment');
   AssertTrue(ContainsMultiStatement('SELECT 1; SELECT 2'), 'two statements');
+  AssertTrue(ContainsMultiStatement('SELECT 1 /* comment */; SELECT 2'), 'two statements after block comment');
 end;
 
 procedure TestAllowedKeys;

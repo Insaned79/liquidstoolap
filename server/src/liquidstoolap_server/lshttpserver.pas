@@ -46,6 +46,7 @@ type
     destructor Destroy; override;
     procedure Run;
     procedure RequestShutdown;
+    function WaitForActiveRequests(const TimeoutMs: Integer): Boolean;
   end;
 
 function NewRequestId: string;
@@ -124,6 +125,7 @@ begin
     begin
       FReady := False;
       FNotReadyReason := E.Message;
+      WriteLn('{"level":"ERROR","message":"startup failed","error":"' + JsonEscape(E.Message) + '"}');
     end;
   end;
   FServer := TFPHTTPServer.Create(nil);
@@ -157,6 +159,29 @@ begin
   FNotReadyReason := 'shutting down';
   if FServer <> nil then
     FServer.Active := False;
+end;
+
+function TLiquidStoolapHttpServer.WaitForActiveRequests(const TimeoutMs: Integer): Boolean;
+var
+  StartedAt: TDateTime;
+  ActiveCount: Integer;
+begin
+  StartedAt := Now;
+  while True do
+  begin
+    EnterCriticalSection(FRequestLock);
+    try
+      ActiveCount := FActiveRequests;
+    finally
+      LeaveCriticalSection(FRequestLock);
+    end;
+
+    if ActiveCount <= 0 then
+      Exit(True);
+    if MilliSecondsBetween(Now, StartedAt) >= TimeoutMs then
+      Exit(False);
+    Sleep(10);
+  end;
 end;
 
 function TLiquidStoolapHttpServer.StatusText(const StatusCode: Integer): string;
@@ -288,9 +313,6 @@ begin
   Json.Add('uptime_s', SecondsBetween(Now, FStartTime));
   Json.Add('ready', FReady);
   Json.Add('auth_enabled', FConfig.Auth.Enabled);
-  if not FReady then
-    Json.Add('reason', FNotReadyReason);
-
   if FReady then
     StatusCode := 200
   else
@@ -315,7 +337,7 @@ var
 begin
   if FAuth = nil then
   begin
-    WriteError(AResponse, 503, RequestId, ERR_BACKEND_UNAVAILABLE, FNotReadyReason);
+    WriteError(AResponse, 503, RequestId, ERR_BACKEND_UNAVAILABLE, 'service is not ready');
     Exit;
   end;
 
@@ -431,7 +453,7 @@ var
 begin
   if not FReady then
   begin
-    WriteError(AResponse, 503, RequestId, ERR_BACKEND_UNAVAILABLE, FNotReadyReason);
+    WriteError(AResponse, 503, RequestId, ERR_BACKEND_UNAVAILABLE, 'service is not ready');
     Exit;
   end;
 
@@ -553,7 +575,7 @@ begin
 
     StartedAt := Now;
     try
-      ResultObject := FAdapter.ExecuteJson(Sql, ParamsObject, TimeoutMs);
+      ResultObject := FAdapter.ExecuteJson(Sql, ParamsObject, TimeoutMs, FConfig.Server.MaxResultRows);
     except
       on E: EStoolapLibraryError do
       begin
@@ -572,7 +594,9 @@ begin
       end;
       on E: Exception do
       begin
-        WriteError(AResponse, 500, RequestId, ERR_INTERNAL_ERROR, E.Message);
+        WriteLn('{"level":"ERROR","message":"internal error","request_id":"' +
+          JsonEscape(RequestId) + '","error":"' + JsonEscape(E.Message) + '"}');
+        WriteError(AResponse, 500, RequestId, ERR_INTERNAL_ERROR, 'Internal Server Error');
         Exit;
       end;
     end;

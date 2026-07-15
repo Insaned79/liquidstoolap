@@ -9,6 +9,7 @@ def test_result_set_as_dicts() -> None:
         types=["INTEGER", "TEXT"],
         rows=[Row(values=[1, "one"])],
         row_count=1,
+        truncated=False,
     )
 
     assert result.as_dicts() == [{"id": 1, "name": "one"}]
@@ -27,11 +28,13 @@ def test_parse_result_set() -> None:
             "types": ["INTEGER", "BOOLEAN"],
             "rows": [{"values": [7, True]}],
             "row_count": 1,
+            "truncated": True,
         }
     )
 
     assert isinstance(result, SqlResultSet)
     assert result.as_dicts() == [{"id": 7, "active": True}]
+    assert result.truncated is True
 
 
 def test_parse_command_result() -> None:

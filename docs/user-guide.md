@@ -97,6 +97,7 @@ Set `[stoolap].read_only = true` when the HTTP layer must reject SQL commands su
 | `port` | `8321` | HTTP port. |
 | `base_path` | `/` | API prefix. Example: `/api/v1`. |
 | `request_body_limit_bytes` | `1048576` | Maximum request body size. |
+| `max_result_rows` | `10000` | Maximum rows materialized into one JSON result set; larger result sets include `"truncated": true`. |
 | `max_concurrent_requests` | `32` | Maximum in-flight HTTP requests; values above `1` enable threaded handling. |
 | `cors_enabled` | `false` | Enables browser CORS headers. |
 | `cors_allow_origin` | `*` | `Access-Control-Allow-Origin` value when CORS is enabled. |
@@ -122,6 +123,7 @@ Set `[stoolap].read_only = true` when the HTTP layer must reject SQL commands su
 | `username` | `admin` | Username accepted by `/auth/token`. |
 | `password_file` | empty | File with password on first line. Required when auth is enabled without static tokens. |
 | `token_ttl_seconds` | `3600` | Lifetime for issued in-memory tokens. |
+| `max_issued_tokens` | `4096` | Maximum retained issued tokens; expired tokens are pruned and the oldest token is evicted when the limit is reached. |
 | `allow_static_tokens` | `false` | Accept tokens from `static_tokens_file`. |
 | `static_tokens_file` | empty | One static token per line. |
 | `token_revoke_on_restart` | `true` | Issued tokens are in-memory and disappear on restart. |
@@ -254,7 +256,8 @@ Query response:
     "columns": ["column1"],
     "types": ["INTEGER"],
     "rows": [{"values": [42]}],
-    "row_count": 1
+    "row_count": 1,
+    "truncated": false
   }
 }
 ```

@@ -23,15 +23,103 @@ function ContainsMultiStatement(const Sql: string): Boolean;
 var
   I: Integer;
   InSingleQuote: Boolean;
+  InDoubleQuote: Boolean;
+  InLineComment: Boolean;
+  InBlockComment: Boolean;
 begin
   Result := False;
   InSingleQuote := False;
-  for I := 1 to Length(Sql) do
+  InDoubleQuote := False;
+  InLineComment := False;
+  InBlockComment := False;
+  I := 1;
+  while I <= Length(Sql) do
   begin
+    if InLineComment then
+    begin
+      if Sql[I] in [#10, #13] then
+        InLineComment := False;
+      Inc(I);
+      Continue;
+    end;
+
+    if InBlockComment then
+    begin
+      if (Sql[I] = '*') and (I < Length(Sql)) and (Sql[I + 1] = '/') then
+      begin
+        InBlockComment := False;
+        Inc(I, 2);
+      end
+      else
+        Inc(I);
+      Continue;
+    end;
+
+    if InSingleQuote then
+    begin
+      if Sql[I] = '''' then
+      begin
+        if (I < Length(Sql)) and (Sql[I + 1] = '''') then
+          Inc(I, 2)
+        else
+        begin
+          InSingleQuote := False;
+          Inc(I);
+        end;
+      end
+      else
+        Inc(I);
+      Continue;
+    end;
+
+    if InDoubleQuote then
+    begin
+      if Sql[I] = '"' then
+      begin
+        if (I < Length(Sql)) and (Sql[I + 1] = '"') then
+          Inc(I, 2)
+        else
+        begin
+          InDoubleQuote := False;
+          Inc(I);
+        end;
+      end
+      else
+        Inc(I);
+      Continue;
+    end;
+
     if Sql[I] = '''' then
-      InSingleQuote := not InSingleQuote
-    else if (Sql[I] = ';') and not InSingleQuote and (Trim(Copy(Sql, I + 1, MaxInt)) <> '') then
+    begin
+      InSingleQuote := True;
+      Inc(I);
+      Continue;
+    end;
+
+    if Sql[I] = '"' then
+    begin
+      InDoubleQuote := True;
+      Inc(I);
+      Continue;
+    end;
+
+    if (Sql[I] = '-') and (I < Length(Sql)) and (Sql[I + 1] = '-') then
+    begin
+      InLineComment := True;
+      Inc(I, 2);
+      Continue;
+    end;
+
+    if (Sql[I] = '/') and (I < Length(Sql)) and (Sql[I + 1] = '*') then
+    begin
+      InBlockComment := True;
+      Inc(I, 2);
+      Continue;
+    end;
+
+    if (Sql[I] = ';') and (Trim(Copy(Sql, I + 1, MaxInt)) <> '') then
       Exit(True);
+    Inc(I);
   end;
 end;
 

@@ -36,6 +36,8 @@ begin
   AssertTrue(Config.Server.Port = 8321, 'default port');
   AssertTrue(Config.Server.BasePath = '/', 'default base path');
   AssertTrue(Config.Auth.Enabled, 'auth enabled by default');
+  AssertTrue(Config.Auth.MaxIssuedTokens = 4096, 'default max issued tokens');
+  AssertTrue(Config.Server.MaxResultRows = 10000, 'default max result rows');
   AssertTrue(Config.Stoolap.SqlWorkerCount = 0, 'default sql worker count is auto');
   AssertTrue(Config.Stoolap.StartupCheck, 'startup check enabled by default');
 end;
@@ -93,6 +95,16 @@ begin
   AssertTrue(Pos('server.max_concurrent_requests', ErrorMessage) > 0, 'max concurrent error message');
 
   WriteTextFile(FileName,
+    '[server]' + LineEnding +
+    'max_result_rows = 0' + LineEnding +
+    LineEnding +
+    '[auth]' + LineEnding +
+    'enabled = false' + LineEnding);
+
+  AssertTrue(not LoadConfig(FileName, Config, ErrorMessage), 'invalid max result rows fails');
+  AssertTrue(Pos('server.max_result_rows', ErrorMessage) > 0, 'max result rows error message');
+
+  WriteTextFile(FileName,
     '[stoolap]' + LineEnding +
     'busy_timeout_ms = 0' + LineEnding +
     LineEnding +
@@ -121,6 +133,13 @@ begin
 
   AssertTrue(not LoadConfig(FileName, Config, ErrorMessage), 'metrics enabled fails in v1');
   AssertTrue(Pos('observability.enable_metrics', ErrorMessage) > 0, 'metrics error message');
+
+  WriteTextFile(FileName,
+    '[auth]' + LineEnding +
+    'max_issued_tokens = 0' + LineEnding);
+
+  AssertTrue(not LoadConfig(FileName, Config, ErrorMessage), 'invalid max issued tokens fails');
+  AssertTrue(Pos('auth.max_issued_tokens', ErrorMessage) > 0, 'max issued tokens error message');
   DeleteFile(FileName);
 end;
 

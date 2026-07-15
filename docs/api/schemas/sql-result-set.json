@@ -3,7 +3,7 @@
   "$id": "https://liquidstoolap.local/schema/sql-result-set.json",
   "title": "SqlResultSet",
   "type": "object",
-  "required": ["kind", "columns", "types", "rows", "row_count"],
+  "required": ["kind", "columns", "types", "rows", "row_count", "truncated"],
   "additionalProperties": false,
   "properties": {
     "kind": {
@@ -30,6 +30,9 @@
     "row_count": {
       "type": "integer",
       "minimum": 0
+    },
+    "truncated": {
+      "type": "boolean"
     }
   }
 }

@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Security and robustness hardening for `0.1.8`: graceful shutdown now waits for active requests and busy Stoolap handles before closing the pool.
+- Added `server.max_result_rows` with `"truncated": true` result-set responses when large queries exceed the configured row materialization limit.
+- Hardened public not-ready responses, internal-error responses, issued-token pruning/caps, read-only SQL classification, and multi-statement scanning.
 - Security hardening for `0.1.7`: request JSON is rejected before parsing when nesting exceeds the server depth limit.
 - `timeout_ms` can no longer exceed the configured `stoolap.busy_timeout_ms` ceiling.
 - Security hardening for `0.1.6`: SQL command params now use native Stoolap parameter binding instead of SQL text materialization.

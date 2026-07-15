@@ -10,6 +10,7 @@ type
     Port: Integer;
     BasePath: string;
     RequestBodyLimitBytes: Integer;
+    MaxResultRows: Integer;
     MaxConcurrentRequests: Integer;
     CorsEnabled: Boolean;
     CorsAllowOrigin: string;
@@ -22,6 +23,7 @@ type
     Username: string;
     PasswordFile: string;
     TokenTtlSeconds: Integer;
+    MaxIssuedTokens: Integer;
     AllowStaticTokens: Boolean;
     StaticTokensFile: string;
     TokenRevokeOnRestart: Boolean;
@@ -104,6 +106,7 @@ begin
   Config.Server.Port := 8321;
   Config.Server.BasePath := '/';
   Config.Server.RequestBodyLimitBytes := 1048576;
+  Config.Server.MaxResultRows := 10000;
   Config.Server.MaxConcurrentRequests := 32;
   Config.Server.CorsEnabled := False;
   Config.Server.CorsAllowOrigin := '*';
@@ -113,6 +116,7 @@ begin
   Config.Auth.Username := 'admin';
   Config.Auth.PasswordFile := '';
   Config.Auth.TokenTtlSeconds := 3600;
+  Config.Auth.MaxIssuedTokens := 4096;
   Config.Auth.AllowStaticTokens := False;
   Config.Auth.StaticTokensFile := '';
   Config.Auth.TokenRevokeOnRestart := True;
@@ -172,6 +176,9 @@ begin
       Config.Server.Port := Ini.ReadInteger('server', 'port', Config.Server.Port);
       Config.Server.BasePath := NormalizeBasePath(Ini.ReadString('server', 'base_path', Config.Server.BasePath));
       Config.Server.RequestBodyLimitBytes := Ini.ReadInteger('server', 'request_body_limit_bytes', Config.Server.RequestBodyLimitBytes);
+      if not Ini.ValueExists('server', 'max_result_rows') then
+        WriteLn('{"level":"WARN","message":"config value server.max_result_rows is not set; using default ', Config.Server.MaxResultRows, '"}');
+      Config.Server.MaxResultRows := Ini.ReadInteger('server', 'max_result_rows', Config.Server.MaxResultRows);
       Config.Server.MaxConcurrentRequests := Ini.ReadInteger('server', 'max_concurrent_requests', Config.Server.MaxConcurrentRequests);
       Config.Server.CorsEnabled := ReadBoolText(Ini, 'server', 'cors_enabled', Config.Server.CorsEnabled);
       Config.Server.CorsAllowOrigin := Ini.ReadString('server', 'cors_allow_origin', Config.Server.CorsAllowOrigin);
@@ -181,6 +188,7 @@ begin
       Config.Auth.Username := Ini.ReadString('auth', 'username', Config.Auth.Username);
       Config.Auth.PasswordFile := Ini.ReadString('auth', 'password_file', Config.Auth.PasswordFile);
       Config.Auth.TokenTtlSeconds := Ini.ReadInteger('auth', 'token_ttl_seconds', Config.Auth.TokenTtlSeconds);
+      Config.Auth.MaxIssuedTokens := Ini.ReadInteger('auth', 'max_issued_tokens', Config.Auth.MaxIssuedTokens);
       Config.Auth.AllowStaticTokens := ReadBoolText(Ini, 'auth', 'allow_static_tokens', Config.Auth.AllowStaticTokens);
       Config.Auth.StaticTokensFile := Ini.ReadString('auth', 'static_tokens_file', Config.Auth.StaticTokensFile);
       Config.Auth.TokenRevokeOnRestart := ReadBoolText(Ini, 'auth', 'token_revoke_on_restart', Config.Auth.TokenRevokeOnRestart);
@@ -223,6 +231,12 @@ begin
   if Config.Server.RequestBodyLimitBytes <= 0 then
   begin
     ErrorMessage := 'server.request_body_limit_bytes must be positive';
+    Exit(False);
+  end;
+
+  if Config.Server.MaxResultRows <= 0 then
+  begin
+    ErrorMessage := 'server.max_result_rows must be positive';
     Exit(False);
   end;
 
@@ -274,6 +288,12 @@ begin
   if Config.Auth.TokenTtlSeconds <= 0 then
   begin
     ErrorMessage := 'auth.token_ttl_seconds must be positive';
+    Exit(False);
+  end;
+
+  if Config.Auth.MaxIssuedTokens <= 0 then
+  begin
+    ErrorMessage := 'auth.max_issued_tokens must be positive';
     Exit(False);
   end;
 

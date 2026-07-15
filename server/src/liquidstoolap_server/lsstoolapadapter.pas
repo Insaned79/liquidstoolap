@@ -27,7 +27,7 @@ type
     function LastDbError(Db: PStoolapDB): string;
     function IsQuerySql(const Sql: string): Boolean;
     function IsReadOnlySql(const Sql: string): Boolean;
-    function RowsToJson(Rows: PStoolapRows): TJSONObject;
+    function RowsToJson(Rows: PStoolapRows; const MaxRows: Integer): TJSONObject;
     function AcquireDb(const TimeoutMs: Int64; out PoolIndex: Integer): PStoolapDB;
     procedure ReleaseDb(const PoolIndex: Integer);
     procedure OpenUnlocked;
@@ -37,8 +37,8 @@ type
     procedure Open;
     procedure Close;
     procedure StartupCheck;
-    function ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
-    function QueryJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+    function ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64; const MaxRows: Integer): TJSONObject;
+    function QueryJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64; const MaxRows: Integer): TJSONObject;
     function CommandJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
     function Version: string;
   end;
@@ -156,8 +156,7 @@ var
   S: string;
 begin
   S := UpperCase(Trim(Sql));
-  Result := (Pos('SELECT', S) = 1) or (Pos('SHOW', S) = 1) or
-    ((Pos('EXPLAIN', S) = 1) and (Pos('EXPLAIN ANALYZE', S) <> 1));
+  Result := (Pos('SELECT', S) = 1) or (Pos('SHOW', S) = 1);
 end;
 
 function IsParameterizedInsertSelect(const Sql: string): Boolean;
@@ -221,9 +220,29 @@ end;
 procedure TStoolapAdapter.Close;
 var
   I: Integer;
+  AllFree: Boolean;
 begin
   EnterCriticalSection(FOpenLock);
   try
+    while True do
+    begin
+      AllFree := True;
+      EnterCriticalSection(FPoolLock);
+      try
+        for I := 0 to High(FPoolBusy) do
+          if FPoolBusy[I] then
+          begin
+            AllFree := False;
+            Break;
+          end;
+      finally
+        LeaveCriticalSection(FPoolLock);
+      end;
+      if AllFree then
+        Break;
+      Sleep(10);
+    end;
+
     if FLibrary <> nil then
     begin
       for I := High(FPool) downto 0 do
@@ -492,7 +511,7 @@ begin
   end;
 end;
 
-function TStoolapAdapter.RowsToJson(Rows: PStoolapRows): TJSONObject;
+function TStoolapAdapter.RowsToJson(Rows: PStoolapRows; const MaxRows: Integer): TJSONObject;
 var
   Status: Integer;
   ColumnCount: Integer;
@@ -508,7 +527,9 @@ var
   BlobLen: Int64;
   BlobPtr: PByte;
   BlobString: RawByteString;
+  Truncated: Boolean;
 begin
+  Truncated := False;
   Result := TJSONObject.Create;
   Columns := TJSONArray.Create;
   Types := TJSONArray.Create;
@@ -525,6 +546,12 @@ begin
   Status := FLibrary.RowsNext(Rows);
   while Status = STOOLAP_ROW do
   begin
+    if RowObjects.Count >= MaxRows then
+    begin
+      Truncated := True;
+      Break;
+    end;
+
     RowObject := TJSONObject.Create;
     Values := TJSONArray.Create;
     RowObject.Add('values', Values);
@@ -578,10 +605,11 @@ begin
     Status := FLibrary.RowsNext(Rows);
   end;
 
-  if Status <> STOOLAP_DONE then
+  if (not Truncated) and (Status <> STOOLAP_DONE) then
     raise EStoolapAdapterError.Create('Stoolap rows iteration failed: ' + Utf8StringFromNullTerminated(FLibrary.RowsErrmsg(Rows)));
 
   Result.Add('row_count', RowObjects.Count);
+  Result.Add('truncated', Truncated);
 end;
 
 procedure RaiseBackendError(const Prefix, MessageText: string);
@@ -591,7 +619,7 @@ begin
   raise EStoolapAdapterError.Create(Prefix + MessageText);
 end;
 
-function TStoolapAdapter.QueryJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+function TStoolapAdapter.QueryJson(Db: PStoolapDB; const Sql: string; Params: TJSONObject; TimeoutMs: Int64; const MaxRows: Integer): TJSONObject;
 var
   Rows: PStoolapRows;
   Status: Integer;
@@ -620,7 +648,7 @@ begin
     RaiseBackendError('Stoolap query failed: ', LastDbError(Db));
 
   try
-    Result := RowsToJson(Rows);
+    Result := RowsToJson(Rows, MaxRows);
   finally
     if Rows <> nil then
       FLibrary.RowsClose(Rows);
@@ -664,7 +692,7 @@ begin
   Result.Add('last_insert_id', TJSONNull.Create);
 end;
 
-function TStoolapAdapter.ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64): TJSONObject;
+function TStoolapAdapter.ExecuteJson(const Sql: string; Params: TJSONObject; TimeoutMs: Int64; const MaxRows: Integer): TJSONObject;
 var
   Db: PStoolapDB;
   PoolIndex: Integer;
@@ -680,7 +708,7 @@ begin
     if FConfig.ReadOnly and (not IsReadOnlySql(Sql)) then
       raise EStoolapAdapterError.Create('Stoolap database is configured read-only; SQL commands are not allowed');
     if IsQuerySql(Sql) then
-      Result := QueryJson(Db, Sql, Params, RemainingTimeoutMs)
+      Result := QueryJson(Db, Sql, Params, RemainingTimeoutMs, MaxRows)
     else
       Result := CommandJson(Db, Sql, Params, RemainingTimeoutMs);
   finally

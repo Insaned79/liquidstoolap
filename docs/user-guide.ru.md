@@ -97,6 +97,7 @@ password_file = ./secrets/admin.password
 | `port` | `8321` | HTTP port. |
 | `base_path` | `/` | Префикс API. Пример: `/api/v1`. |
 | `request_body_limit_bytes` | `1048576` | Максимальный размер request body. |
+| `max_result_rows` | `10000` | Максимум строк, материализуемых в один JSON result set; большие результаты содержат `"truncated": true`. |
 | `max_concurrent_requests` | `32` | Максимум in-flight HTTP requests; значения больше `1` включают threaded handling. |
 | `cors_enabled` | `false` | Включает browser CORS headers. |
 | `cors_allow_origin` | `*` | Значение `Access-Control-Allow-Origin`, если CORS включён. |
@@ -122,6 +123,7 @@ password_file = ./secrets/admin.password
 | `username` | `admin` | Username для `/auth/token`. |
 | `password_file` | empty | Файл с паролем в первой строке. Обязателен, если auth включена без static tokens. |
 | `token_ttl_seconds` | `3600` | Lifetime issued in-memory tokens. |
+| `max_issued_tokens` | `4096` | Максимум retained issued tokens; expired tokens удаляются, а при достижении лимита вытесняется самый старый token. |
 | `allow_static_tokens` | `false` | Принимать tokens из `static_tokens_file`. |
 | `static_tokens_file` | empty | Один static token на строку. |
 | `token_revoke_on_restart` | `true` | Issued tokens хранятся in-memory и исчезают после restart. |
@@ -254,7 +256,8 @@ Query response:
     "columns": ["column1"],
     "types": ["INTEGER"],
     "rows": [{"values": [42]}],
-    "row_count": 1
+    "row_count": 1,
+    "truncated": false
   }
 }
 ```

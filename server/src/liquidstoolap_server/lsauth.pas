@@ -16,8 +16,11 @@ type
     FPassword: string;
     FIssuedTokens: TStringList;
     FStaticTokens: TStringList;
+    FIssuedSerial: Int64;
     function ReadPasswordFile(const FileName: string): string;
     procedure LoadStaticTokens(const FileName: string);
+    procedure PruneExpiredTokens;
+    procedure EvictOldestIssuedToken;
     procedure AddIssuedToken(const Token: string);
     function IsIssuedTokenValid(const Token: string): Boolean;
   public
@@ -81,6 +84,7 @@ begin
   FIssuedTokens := TStringList.Create;
   FIssuedTokens.Sorted := True;
   FIssuedTokens.Duplicates := dupIgnore;
+  FIssuedSerial := 0;
   FStaticTokens := TStringList.Create;
   FStaticTokens.Sorted := True;
   FStaticTokens.Duplicates := dupIgnore;
@@ -143,12 +147,80 @@ begin
   end;
 end;
 
+function IssuedTokenExpiresAt(const Raw: string): TDateTime;
+var
+  P: Integer;
+  ExpiresText: string;
+begin
+  P := Pos('|', Raw);
+  if P > 0 then
+    ExpiresText := Copy(Raw, 1, P - 1)
+  else
+    ExpiresText := Raw;
+  Result := StrToFloat(ExpiresText);
+end;
+
+function IssuedTokenSerial(const Raw: string): Int64;
+var
+  P: Integer;
+begin
+  P := Pos('|', Raw);
+  if P <= 0 then
+    Exit(0);
+  Result := StrToInt64Def(Copy(Raw, P + 1, MaxInt), 0);
+end;
+
+procedure TAuthService.PruneExpiredTokens;
+var
+  I: Integer;
+  ExpiresAt: TDateTime;
+begin
+  for I := FIssuedTokens.Count - 1 downto 0 do
+  begin
+    try
+      ExpiresAt := IssuedTokenExpiresAt(FIssuedTokens.ValueFromIndex[I]);
+    except
+      FIssuedTokens.Delete(I);
+      Continue;
+    end;
+    if Now > ExpiresAt then
+      FIssuedTokens.Delete(I);
+  end;
+end;
+
+procedure TAuthService.EvictOldestIssuedToken;
+var
+  I: Integer;
+  OldestIndex: Integer;
+  OldestSerial: Int64;
+  Serial: Int64;
+begin
+  if FIssuedTokens.Count = 0 then
+    Exit;
+  OldestIndex := 0;
+  OldestSerial := IssuedTokenSerial(FIssuedTokens.ValueFromIndex[0]);
+  for I := 1 to FIssuedTokens.Count - 1 do
+  begin
+    Serial := IssuedTokenSerial(FIssuedTokens.ValueFromIndex[I]);
+    if Serial < OldestSerial then
+    begin
+      OldestSerial := Serial;
+      OldestIndex := I;
+    end;
+  end;
+  FIssuedTokens.Delete(OldestIndex);
+end;
+
 procedure TAuthService.AddIssuedToken(const Token: string);
 var
   ExpiresAt: TDateTime;
 begin
+  PruneExpiredTokens;
+  while FIssuedTokens.Count >= FConfig.MaxIssuedTokens do
+    EvictOldestIssuedToken;
   ExpiresAt := Now + (FConfig.TokenTtlSeconds / 86400);
-  FIssuedTokens.Values[Token] := FloatToStr(ExpiresAt);
+  Inc(FIssuedSerial);
+  FIssuedTokens.Values[Token] := FloatToStr(ExpiresAt) + '|' + IntToStr(FIssuedSerial);
 end;
 
 function TAuthService.IsIssuedTokenValid(const Token: string): Boolean;
@@ -171,7 +243,7 @@ begin
     Exit(False);
 
   try
-    ExpiresAt := StrToFloat(Raw);
+    ExpiresAt := IssuedTokenExpiresAt(Raw);
   except
     Exit(False);
   end;
@@ -192,6 +264,9 @@ end;
 
 function TAuthService.IssueToken(const Username, Password: string; out Token: string;
   out ExpiresIn: Integer): Boolean;
+var
+  UserOk: Boolean;
+  PasswordOk: Boolean;
 begin
   Token := '';
   ExpiresIn := FConfig.TokenTtlSeconds;
@@ -200,7 +275,9 @@ begin
   if FPassword = '' then
     raise EAuthError.Create('password authentication is not configured');
 
-  Result := ConstantTimeEqual(Username, FConfig.Username) and ConstantTimeEqual(Password, FPassword);
+  UserOk := ConstantTimeEqual(Username, FConfig.Username);
+  PasswordOk := ConstantTimeEqual(Password, FPassword);
+  Result := UserOk and PasswordOk;
   if Result then
   begin
     Token := NewToken;
@@ -212,19 +289,24 @@ function TAuthService.ValidateBearer(const AuthorizationHeader: string): Boolean
 var
   Token: string;
   I: Integer;
+  StaticOk: Boolean;
+  IssuedOk: Boolean;
 const
   Prefix = 'Bearer ';
 begin
   Result := False;
+  StaticOk := False;
   if not FConfig.Enabled then
     Exit(True);
   if Pos(Prefix, AuthorizationHeader) <> 1 then
     Exit(False);
   Token := Copy(AuthorizationHeader, Length(Prefix) + 1, MaxInt);
+  PruneExpiredTokens;
   for I := 0 to FStaticTokens.Count - 1 do
     if ConstantTimeEqual(FStaticTokens[I], Token) then
-      Result := True;
-  Result := Result or IsIssuedTokenValid(Token);
+      StaticOk := True;
+  IssuedOk := IsIssuedTokenValid(Token);
+  Result := StaticOk or IssuedOk;
 end;
 
 end.

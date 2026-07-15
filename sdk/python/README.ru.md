@@ -56,7 +56,7 @@ asyncio.run(main())
 
 `SqlResultSet` предоставляет:
 
-- `columns`, `types`, `rows`, `row_count`;
+- `columns`, `types`, `rows`, `row_count`, `truncated`;
 - `as_dicts()` для `list[dict[str, value]]`;
 - `as_tuples()` для tuple rows;
 - `first()` для одной dict row или `None`;

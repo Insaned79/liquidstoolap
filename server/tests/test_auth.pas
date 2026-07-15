@@ -72,6 +72,34 @@ begin
   end;
 end;
 
+procedure TestIssuedTokenLimitEvictsOldest;
+var
+  Config: TAppConfig;
+  Auth: TAuthService;
+  PasswordFile: string;
+  FirstToken: string;
+  SecondToken: string;
+  ExpiresIn: Integer;
+begin
+  SetDefaultConfig(Config);
+  PasswordFile := GetTempDir(False) + DirectorySeparator + 'liquidstoolap-auth-password-limit.txt';
+  WriteTextFile(PasswordFile, 'secret' + LineEnding);
+  Config.Auth.PasswordFile := PasswordFile;
+  Config.Auth.MaxIssuedTokens := 1;
+
+  Auth := TAuthService.Create(Config.Auth);
+  try
+    AssertTrue(Auth.IssueToken('admin', 'secret', FirstToken, ExpiresIn), 'first token issued');
+    AssertTrue(Auth.ValidateBearer('Bearer ' + FirstToken), 'first token initially valid');
+    AssertTrue(Auth.IssueToken('admin', 'secret', SecondToken, ExpiresIn), 'second token issued');
+    AssertTrue(not Auth.ValidateBearer('Bearer ' + FirstToken), 'oldest token evicted');
+    AssertTrue(Auth.ValidateBearer('Bearer ' + SecondToken), 'newest token valid');
+  finally
+    Auth.Free;
+    DeleteFile(PasswordFile);
+  end;
+end;
+
 procedure TestStaticTokens;
 var
   Config: TAppConfig;
@@ -129,6 +157,7 @@ end;
 begin
   TestDisabledAuthAllowsRequests;
   TestIssuedToken;
+  TestIssuedTokenLimitEvictsOldest;
   TestStaticTokens;
   TestEmptyPasswordFileRejected;
   WriteLn('test_auth ok');

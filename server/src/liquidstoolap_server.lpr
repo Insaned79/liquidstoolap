@@ -267,6 +267,11 @@ begin
     begin
       Server.RequestShutdown;
       WakeServer(Config.Server.Host, Config.Server.Port, Config.Server.BasePath);
+      if not Server.WaitForActiveRequests(Config.Timeouts.ShutdownGraceMs) then
+      begin
+        WriteLn(StdErr, 'active requests did not finish before shutdown_grace_ms');
+        Halt(4);
+      end;
       Deadline := Now + (Config.Timeouts.ShutdownGraceMs / 86400000);
       while (not ServerThread.Finished) and (Now < Deadline) do
         Sleep(50);
@@ -642,6 +647,39 @@ begin
   end;
 end;
 
+function IsFloatJsonLiteral(const Value: string): Boolean;
+var
+  Lower: string;
+begin
+  Lower := LowerCase(Value);
+  Result := (Pos('.', Lower) > 0) or (Pos('e', Lower) > 0);
+end;
+
+function HumanFloatText(const Value: TJSONData): string;
+var
+  Raw: string;
+  FloatValue: Double;
+  Settings: TFormatSettings;
+begin
+  Raw := Value.AsJSON;
+  if not IsFloatJsonLiteral(Raw) then
+    Exit(Raw);
+
+  Settings := DefaultFormatSettings;
+  Settings.DecimalSeparator := '.';
+  if not TryStrToFloat(Raw, FloatValue, Settings) then
+    Exit(Raw);
+
+  Result := FloatToStrF(FloatValue, ffGeneral, 15, 8, Settings);
+end;
+
+function JsonValueToTableText(Value: TJSONData; const HumanReadableFloats: Boolean): string;
+begin
+  if (Value <> nil) and HumanReadableFloats and (Value.JSONType = jtNumber) then
+    Exit(HumanFloatText(Value));
+  Result := JsonValueToText(Value);
+end;
+
 function RepeatChar(const Ch: Char; Count: Integer): string;
 begin
   if Count <= 0 then
@@ -700,7 +738,7 @@ begin
   WriteLn;
 end;
 
-procedure PrintSqlTable(const Body: string);
+procedure PrintSqlTable(const Body: string; const HumanReadableFloats: Boolean);
 var
   Data: TJSONData;
   ResultObj: TJSONObject;
@@ -760,7 +798,7 @@ begin
       RowValues := Rows.Objects[R].Arrays['values'];
       for I := 0 to Columns.Count - 1 do
       begin
-        RowText[I] := JsonValueToText(RowValues.Items[I]);
+        RowText[I] := JsonValueToTableText(RowValues.Items[I], HumanReadableFloats);
         if Utf8DisplayWidth(RowText[I]) > Widths[I] then
           Widths[I] := Utf8DisplayWidth(RowText[I]);
       end;
@@ -773,7 +811,7 @@ begin
     begin
       RowValues := Rows.Objects[R].Arrays['values'];
       for I := 0 to Columns.Count - 1 do
-        RowText[I] := JsonValueToText(RowValues.Items[I]);
+        RowText[I] := JsonValueToTableText(RowValues.Items[I], HumanReadableFloats);
       PrintTableRow(RowText, Widths);
     end;
     PrintTableSeparator(Widths);
@@ -786,7 +824,7 @@ begin
   end;
 end;
 
-procedure PrintSqlResponse(const Body, OutputFormat: string);
+procedure PrintSqlResponse(const Body, OutputFormat: string; const HumanReadableFloats: Boolean);
 var
   TrimmedBody: string;
 begin
@@ -801,7 +839,7 @@ begin
   if OutputFormat = 'json' then
     WriteLn(Body)
   else
-    PrintSqlTable(Body);
+    PrintSqlTable(Body, HumanReadableFloats);
 end;
 
 function ExecuteSqlForCli(const Url, Token, Sql, OutputFormat: string): Integer;
@@ -810,7 +848,7 @@ var
   Body: string;
 begin
   Body := HttpPostJson(Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Token, StatusCode);
-  PrintSqlResponse(Body, OutputFormat);
+  PrintSqlResponse(Body, OutputFormat, True);
   if StatusCode >= 500 then
     Exit(4);
   if (StatusCode = 401) or (StatusCode = 403) then
@@ -876,7 +914,8 @@ begin
   end;
 end;
 
-function ExecuteSqlForCliAuth(var Auth: TCliAuthState; const Sql, OutputFormat: string): Integer;
+function ExecuteSqlForCliAuth(var Auth: TCliAuthState; const Sql, OutputFormat: string;
+  const HumanReadableFloats: Boolean): Integer;
 var
   StatusCode: Integer;
   Body: string;
@@ -891,7 +930,7 @@ begin
     Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token, StatusCode);
   end;
 
-  PrintSqlResponse(Body, OutputFormat);
+  PrintSqlResponse(Body, OutputFormat, HumanReadableFloats);
   if StatusCode >= 500 then
     Exit(4);
   if (StatusCode = 401) or (StatusCode = 403) then
@@ -910,6 +949,8 @@ begin
   WriteLn('  .help            show this help');
   WriteLn('  .format table    print result sets as ASCII tables');
   WriteLn('  .format json     print raw JSON responses');
+  WriteLn('  .float human     print floats in human-readable table format (default)');
+  WriteLn('  .float raw       print floats exactly as returned by JSON');
   WriteLn('  .quit, .exit, \q  exit');
 end;
 
@@ -919,12 +960,14 @@ var
   Auth: TCliAuthState;
   ExecuteSql: string;
   OutputFormat: string;
+  HumanReadableFloats: Boolean;
   Line: string;
   SqlBuffer: string;
   ExitCode: Integer;
 begin
   Url := ArgValue('--url', 'http://127.0.0.1:8321');
   OutputFormat := ArgValue('--format', 'table');
+  HumanReadableFloats := True;
   if (OutputFormat <> 'table') and (OutputFormat <> 'json') then
   begin
     WriteLn(StdErr, '--format must be table or json');
@@ -944,7 +987,7 @@ begin
   ExecuteSql := FirstArgValue('--execute', '-e', '');
   if ExecuteSql <> '' then
   begin
-    Halt(ExecuteSqlForCliAuth(Auth, ExecuteSql, OutputFormat));
+    Halt(ExecuteSqlForCliAuth(Auth, ExecuteSql, OutputFormat, HumanReadableFloats));
   end;
 
   WriteLn('Connected to ', Url);
@@ -988,6 +1031,23 @@ begin
             WriteLn('format set to ', OutputFormat);
           Continue;
         end;
+        if Pos('.float ', Line) = 1 then
+        begin
+          Line := Trim(Copy(Line, Length('.float ') + 1, MaxInt));
+          if Line = 'human' then
+          begin
+            HumanReadableFloats := True;
+            WriteLn('float format set to human');
+          end
+          else if Line = 'raw' then
+          begin
+            HumanReadableFloats := False;
+            WriteLn('float format set to raw');
+          end
+          else
+            WriteLn('float format must be human or raw');
+          Continue;
+        end;
         WriteLn('unknown command: ', Line);
         Continue;
       end;
@@ -1003,7 +1063,7 @@ begin
 
       if (Trim(SqlBuffer) <> '') and (Trim(SqlBuffer)[Length(Trim(SqlBuffer))] = ';') then
       begin
-        ExitCode := ExecuteSqlForCliAuth(Auth, SqlBuffer, OutputFormat);
+        ExitCode := ExecuteSqlForCliAuth(Auth, SqlBuffer, OutputFormat, HumanReadableFloats);
         if ExitCode <> 0 then
           WriteLn(StdErr, 'SQL failed with exit code ', ExitCode);
         SqlBuffer := '';

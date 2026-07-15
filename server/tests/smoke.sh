@@ -68,6 +68,14 @@ select_response="$(curl -fsS \
 grep -q '"kind" : "result_set"' <<<"$select_response"
 grep -q '"values" : \[42\]' <<<"$select_response"
 
+truncated_response="$(curl -fsS \
+  -X POST "http://127.0.0.1:$PORT/sql" \
+  -H "Authorization: Bearer $token" \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"SELECT value FROM generate_series(1, 10005) AS g(value)"}')"
+grep -q '"row_count" : 10000' <<<"$truncated_response"
+grep -q '"truncated" : true' <<<"$truncated_response"
+
 cli_select_response="$(./build/liquidstoolap sql --url "http://127.0.0.1:$PORT" --token "$cli_token" --sql "SELECT :id" --param id=43)"
 grep -q '"values" : \[43\]' <<<"$cli_select_response"
 
@@ -75,6 +83,13 @@ cli_connect_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$P
 grep -q '| id |' <<<"$cli_connect_response"
 grep -q '| 44 |' <<<"$cli_connect_response"
 grep -Eq '1 row\(s\) in [0-9]+ ms' <<<"$cli_connect_response"
+
+cli_connect_float_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token" -e "SELECT 24.719999999999999 AS v, 7174.0000000000000 AS water, 100.00000000000000 AS battery")"
+grep -q '| 24.72 | 7174  | 100     |' <<<"$cli_connect_float_response"
+
+cli_shell_raw_float_response="$(printf '.float raw\nSELECT 24.719999999999999 AS v;\n.quit\n' | ./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --token "$cli_token")"
+grep -q 'float format set to raw' <<<"$cli_shell_raw_float_response"
+grep -q '2.4719999999999999E+001' <<<"$cli_shell_raw_float_response"
 
 cli_connect_login_response="$(./build/liquidstoolap connect --url "http://127.0.0.1:$PORT" --username admin --password-file "$PASSWORD_FILE" -e "SELECT 440 AS id")"
 grep -q '| 440 |' <<<"$cli_connect_login_response"
@@ -337,6 +352,21 @@ PY
 )"
 test "$large_body_status" = "400"
 
+python3 - <<PY &
+import json
+import urllib.request
+
+req = urllib.request.Request(
+    "http://127.0.0.1:$PORT/sql",
+    data=json.dumps({"sql": "SELECT SLEEP(2)"}).encode("utf-8"),
+    headers={"Content-Type": "application/json", "Authorization": "Bearer $token"},
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=10) as resp:
+    open("/tmp/liquidstoolap-shutdown-active-request.json", "wb").write(resp.read())
+PY
+ACTIVE_REQUEST_PID=$!
+sleep 1
 kill -TERM "$SERVER_PID"
 for _ in $(seq 1 50); do
   if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
@@ -349,6 +379,8 @@ if kill -0 "$SERVER_PID" >/dev/null 2>&1; then
   exit 1
 fi
 wait "$SERVER_PID" >/dev/null 2>&1 || true
+wait "$ACTIVE_REQUEST_PID"
+grep -q '"ok" : true' /tmp/liquidstoolap-shutdown-active-request.json
 
 cleanup
 trap - EXIT
@@ -382,6 +414,42 @@ static_sql="$(curl -fsS \
   -H 'Content-Type: application/json' \
   -d '{"sql":"SELECT 7"}')"
 grep -q '"values" : \[7\]' <<<"$static_sql"
+
+cleanup
+trap - EXIT
+
+BAD_HEALTH_CONFIG="$ROOT_DIR/build/bad-health.ini"
+MISSING_PASSWORD_FILE="$ROOT_DIR/build/does-not-exist.password"
+sed \
+  -e "s#port = 8321#port = $PORT#" \
+  -e "s#password_file =#password_file = $MISSING_PASSWORD_FILE#" \
+  -e "s#database_path = ./data/stoolap.db#database_path = memory://#" \
+  ../config/config.example.ini > "$BAD_HEALTH_CONFIG"
+
+./build/liquidstoolap serve --config "$BAD_HEALTH_CONFIG" > "$LOG_FILE" 2>&1 &
+SERVER_PID=$!
+trap cleanup EXIT
+sleep 0.3
+
+bad_health_status="$(curl -sS -o /tmp/liquidstoolap-bad-health.json -w '%{http_code}' \
+  "http://127.0.0.1:$PORT/health")"
+test "$bad_health_status" = "503"
+grep -q '"status" : "degraded"' /tmp/liquidstoolap-bad-health.json
+if grep -q 'reason\|does-not-exist.password\|password file not found' /tmp/liquidstoolap-bad-health.json; then
+  echo "health leaked internal startup reason" >&2
+  exit 1
+fi
+
+bad_sql_status="$(curl -sS -o /tmp/liquidstoolap-bad-sql.json -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$PORT/sql" \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"SELECT 1"}')"
+test "$bad_sql_status" = "503"
+grep -q '"message" : "service is not ready"' /tmp/liquidstoolap-bad-sql.json
+if grep -q 'does-not-exist.password\|password file not found' /tmp/liquidstoolap-bad-sql.json; then
+  echo "not-ready sql leaked internal startup reason" >&2
+  exit 1
+fi
 
 cleanup
 trap - EXIT
@@ -477,6 +545,14 @@ readonly_with_status="$(curl -sS -o /tmp/liquidstoolap-readonly-with.json -w '%{
   -d '{"sql":"WITH x AS (SELECT 1) SELECT 1"}')"
 test "$readonly_with_status" = "422"
 grep -q 'read-only' /tmp/liquidstoolap-readonly-with.json
+
+readonly_explain_status="$(curl -sS -o /tmp/liquidstoolap-readonly-explain.json -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$PORT/sql" \
+  -H "Authorization: Bearer $readonly_token" \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"EXPLAIN  SELECT 1"}')"
+test "$readonly_explain_status" = "422"
+grep -q 'read-only' /tmp/liquidstoolap-readonly-explain.json
 
 cleanup
 trap - EXIT
