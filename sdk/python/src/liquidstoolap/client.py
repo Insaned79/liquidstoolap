@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from typing_extensions import Self
 
 from .exceptions import (
     AuthenticationError,
@@ -14,7 +15,16 @@ from .exceptions import (
     TransportError,
     ValidationError,
 )
-from .models import HealthResponse, ScalarValue, SqlCommandResult, SqlExecutionResult, SqlResponse, SqlResultSet, TokenResponse, parse_result
+from .models import (
+    HealthResponse,
+    ScalarValue,
+    SqlCommandResult,
+    SqlExecutionResult,
+    SqlResponse,
+    SqlResultSet,
+    TokenResponse,
+    parse_result,
+)
 
 
 def _parse_health(data: dict[str, Any]) -> HealthResponse:
@@ -106,7 +116,7 @@ class LiquidStoolapClient:
             headers=client_headers,
         )
 
-    def __enter__(self) -> "LiquidStoolapClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -254,7 +264,7 @@ class AsyncLiquidStoolapClient:
             headers=client_headers,
         )
 
-    async def __aenter__(self) -> "AsyncLiquidStoolapClient":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:

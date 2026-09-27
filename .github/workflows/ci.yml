@@ -17,7 +17,11 @@ jobs:
       - name: Server unit tests
         run: make -C server test
       - name: Server smoke
-        run: make -C server smoke
+        run: |
+          if ! make -C server smoke; then
+            test ! -f server/build/smoke.log || cat server/build/smoke.log
+            exit 1
+          fi
 
   python-sdk:
     runs-on: ubuntu-latest
