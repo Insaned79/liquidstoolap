@@ -6,6 +6,16 @@ All notable changes to Liquid Stoolap are documented here.
 
 - No user-facing changes yet.
 
+## 0.1.9 - 2026-09-27
+
+- Pinned release builds to a reviewed Stoolap 0.4.0 commit and patch instead of the moving upstream `main` branch.
+- Made recovery fail closed when a live manifest references a missing, truncated, or corrupt volume, preventing silent partial query results.
+- Added read-back CRC verification before publishing newly written volumes and validated on-disk layout sizes before allocation.
+- Bounded each compaction pass to 16 input volumes to prevent an accumulated backlog from producing unbounded memory peaks.
+- Fixed stale manifests left by `DROP TABLE` and `TRUNCATE TABLE` so WAL truncation cannot make a healthy database fail recovery.
+- Added durability regressions for corrupt storage, bounded compaction, and crash-safe table deletion/truncation.
+- Added CLI support for HTTPS endpoints with self-signed certificates via `--insecure` / `--allow-self-signed`.
+
 ## 0.1.8 - 2026-07-15
 
 - Added graceful shutdown handling: the server now waits for active HTTP requests and busy Stoolap handles before closing the connection pool.

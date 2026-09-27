@@ -4,7 +4,8 @@ program liquidstoolap_server;
 
 uses
   cthreads, cwstring, SysUtils, Classes, BaseUnix, DynLibs, ctypes, termio,
-  fphttpclient, fpjson, jsonparser, lsconfig, lshttpserver, lsversion;
+  fphttpclient, fpjson, jsonparser, ssockets, sslsockets, opensslsockets,
+  lsconfig, lshttpserver, lsversion;
 
 var
   ShutdownRequested: Boolean = False;
@@ -18,10 +19,16 @@ type
     Url: string;
     Token: string;
     StaticToken: Boolean;
+    InsecureTls: Boolean;
     Username: string;
     PasswordFile: string;
     Password: string;
     ExpiresAt: TDateTime;
+  end;
+
+  TCliTlsVerifier = class
+    procedure AllowAnyCertificate(Sender: TObject; var Allow: Boolean);
+    procedure ConfigureSocketHandler(Sender: TObject; const UseSSL: Boolean; out AHandler: TSocketHandler);
   end;
 
 var
@@ -30,6 +37,48 @@ var
   AddHistoryFunc: TAddHistoryFunc = nil;
   ReadHistoryFunc: TReadHistoryFunc = nil;
   WriteHistoryFunc: TWriteHistoryFunc = nil;
+  CliTlsVerifier: TCliTlsVerifier = nil;
+  CliAllowInsecureTls: Boolean = False;
+
+function ExistingCaBundleFile: string;
+const
+  Candidates: array[0..3] of string = (
+    '/etc/ssl/certs/ca-certificates.crt',
+    '/etc/pki/tls/certs/ca-bundle.crt',
+    '/etc/ssl/ca-bundle.pem',
+    '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem'
+  );
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := Low(Candidates) to High(Candidates) do
+    if FileExists(Candidates[I]) then
+      Exit(Candidates[I]);
+end;
+
+procedure TCliTlsVerifier.AllowAnyCertificate(Sender: TObject; var Allow: Boolean);
+begin
+  Allow := True;
+end;
+
+procedure TCliTlsVerifier.ConfigureSocketHandler(Sender: TObject; const UseSSL: Boolean;
+  out AHandler: TSocketHandler);
+var
+  Handler: TOpenSSLSocketHandler;
+begin
+  AHandler := nil;
+  if not UseSSL then
+    Exit;
+
+  Handler := TOpenSSLSocketHandler.Create;
+  Handler.VerifyPeerCert := not CliAllowInsecureTls;
+  if CliAllowInsecureTls then
+    Handler.OnVerifyCertificate := @AllowAnyCertificate
+  else
+    Handler.CertificateData.CertCA.FileName := ExistingCaBundleFile;
+  AHandler := Handler;
+end;
 
 function IsATTY(Fd: cint): cint; cdecl; external 'c' name 'isatty';
 procedure CFree(P: Pointer); cdecl; external 'c' name 'free';
@@ -104,6 +153,10 @@ begin
   WriteLn('  liquidstoolap sql --url URL --token TOKEN --sql SQL [--param name=value]');
   WriteLn('  liquidstoolap connect --url URL (--token TOKEN | --username USER [--password-file PATH])');
   WriteLn('  liquidstoolap connect --url URL --token TOKEN -e SQL [--format table|json]');
+  WriteLn;
+  WriteLn('TLS options for CLI HTTP commands:');
+  WriteLn('  --insecure             allow self-signed or otherwise untrusted HTTPS certificates');
+  WriteLn('  --allow-self-signed    alias for --insecure');
 end;
 
 function ArgValue(const Name: string; const DefaultValue: string): string;
@@ -114,6 +167,30 @@ begin
   for I := 1 to ParamCount - 1 do
     if (ParamStr(I) = Name) and (I < ParamCount) then
       Exit(ParamStr(I + 1));
+end;
+
+function ArgFlag(const Name: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if ParamStr(I) = Name then
+      Exit(True);
+end;
+
+function CliInsecureTlsRequested: Boolean;
+begin
+  Result := ArgFlag('--insecure') or ArgFlag('--allow-self-signed');
+end;
+
+function CreateCliHttpClient(const AllowInsecureTls: Boolean): TFPHTTPClient;
+begin
+  CliAllowInsecureTls := AllowInsecureTls;
+  if CliTlsVerifier = nil then
+    CliTlsVerifier := TCliTlsVerifier.Create;
+  Result := TFPHTTPClient.Create(nil);
+  Result.OnGetSocketHandler := @CliTlsVerifier.ConfigureSocketHandler;
 end;
 
 function FirstArgValue(const Name1, Name2, DefaultValue: string): string;
@@ -392,12 +469,13 @@ begin
     Halt(2);
 end;
 
-function HttpPostJson(const Url, Payload, Token: string; out StatusCode: Integer): string;
+function HttpPostJson(const Url, Payload, Token: string; const AllowInsecureTls: Boolean;
+  out StatusCode: Integer): string;
 var
   Client: TFPHTTPClient;
   Request: TStringStream;
 begin
-  Client := TFPHTTPClient.Create(nil);
+  Client := CreateCliHttpClient(AllowInsecureTls);
   Request := TStringStream.Create(Payload);
   try
     Client.AddHeader('Content-Type', 'application/json');
@@ -420,7 +498,8 @@ begin
   end;
 end;
 
-function IssueTokenWithPassword(const Url, Username, Password: string; out ExpiresAt: TDateTime): string;
+function IssueTokenWithPassword(const Url, Username, Password: string;
+  const AllowInsecureTls: Boolean; out ExpiresAt: TDateTime): string;
 var
   StatusCode: Integer;
   Body: string;
@@ -432,6 +511,7 @@ begin
     Url + '/auth/token',
     '{"username":' + JsonString(Username) + ',"password":' + JsonString(Password) + '}',
     '',
+    AllowInsecureTls,
     StatusCode
   );
   if StatusCode >= 400 then
@@ -450,7 +530,7 @@ begin
   ExpiresAt := Now + (ExpiresIn / 86400);
 end;
 
-function IssueToken(const Url, Username, PasswordFile: string): string;
+function IssueToken(const Url, Username, PasswordFile: string; const AllowInsecureTls: Boolean): string;
 var
   Password: string;
   ExpiresAt: TDateTime;
@@ -459,10 +539,10 @@ begin
     Password := ReadFirstLine(PasswordFile)
   else
     Password := ReadPasswordFromTerminal('Password: ');
-  Result := IssueTokenWithPassword(Url, Username, Password, ExpiresAt);
+  Result := IssueTokenWithPassword(Url, Username, Password, AllowInsecureTls, ExpiresAt);
 end;
 
-function CliAuthToken(const Url: string): string;
+function CliAuthToken(const Url: string; const AllowInsecureTls: Boolean): string;
 var
   Username: string;
 begin
@@ -470,7 +550,7 @@ begin
   if Result <> '' then
     Exit;
   Username := ArgValue('--username', 'admin');
-  Result := IssueToken(Url, Username, ArgValue('--password-file', ''));
+  Result := IssueToken(Url, Username, ArgValue('--password-file', ''), AllowInsecureTls);
 end;
 
 procedure CliHealth;
@@ -480,7 +560,7 @@ var
   Body: string;
 begin
   Url := ArgValue('--url', 'http://127.0.0.1:8321');
-  Client := TFPHTTPClient.Create(nil);
+  Client := CreateCliHttpClient(CliInsecureTlsRequested);
   try
     try
       Body := Client.Get(Url + '/health');
@@ -517,7 +597,7 @@ begin
   end;
   Password := ReadFirstLine(PasswordFile);
 
-  Client := TFPHTTPClient.Create(nil);
+  Client := CreateCliHttpClient(CliInsecureTlsRequested);
   Request := TStringStream.Create('{"username":' + JsonString(Username) + ',"password":' + JsonString(Password) + '}');
   try
     Request.Position := 0;
@@ -606,7 +686,7 @@ begin
   end;
   Payload := SqlPayload(Sql);
 
-  Client := TFPHTTPClient.Create(nil);
+  Client := CreateCliHttpClient(CliInsecureTlsRequested);
   Request := TStringStream.Create(Payload);
   try
     Client.AddHeader('Content-Type', 'application/json');
@@ -842,12 +922,14 @@ begin
     PrintSqlTable(Body, HumanReadableFloats);
 end;
 
-function ExecuteSqlForCli(const Url, Token, Sql, OutputFormat: string): Integer;
+function ExecuteSqlForCli(const Url, Token, Sql, OutputFormat: string;
+  const AllowInsecureTls: Boolean): Integer;
 var
   StatusCode: Integer;
   Body: string;
 begin
-  Body := HttpPostJson(Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Token, StatusCode);
+  Body := HttpPostJson(Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Token,
+    AllowInsecureTls, StatusCode);
   PrintSqlResponse(Body, OutputFormat, True);
   if StatusCode >= 500 then
     Exit(4);
@@ -865,6 +947,7 @@ begin
   Auth.Url := Url;
   Auth.Token := ArgValue('--token', '');
   Auth.StaticToken := Auth.Token <> '';
+  Auth.InsecureTls := CliInsecureTlsRequested;
   Auth.Username := '';
   Auth.PasswordFile := '';
   Auth.Password := '';
@@ -878,14 +961,16 @@ begin
     Auth.Password := ReadFirstLine(Auth.PasswordFile)
   else
     Auth.Password := ReadPasswordFromTerminal('Password: ');
-  Auth.Token := IssueTokenWithPassword(Auth.Url, Auth.Username, Auth.Password, Auth.ExpiresAt);
+  Auth.Token := IssueTokenWithPassword(Auth.Url, Auth.Username, Auth.Password,
+    Auth.InsecureTls, Auth.ExpiresAt);
 end;
 
 procedure RefreshCliAuthToken(var Auth: TCliAuthState);
 begin
   if Auth.StaticToken then
     Exit;
-  Auth.Token := IssueTokenWithPassword(Auth.Url, Auth.Username, Auth.Password, Auth.ExpiresAt);
+  Auth.Token := IssueTokenWithPassword(Auth.Url, Auth.Username, Auth.Password,
+    Auth.InsecureTls, Auth.ExpiresAt);
 end;
 
 procedure EnsureCliAuthTokenFresh(var Auth: TCliAuthState);
@@ -921,13 +1006,15 @@ var
   Body: string;
 begin
   EnsureCliAuthTokenFresh(Auth);
-  Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token, StatusCode);
+  Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token,
+    Auth.InsecureTls, StatusCode);
 
   if (StatusCode = 401) and (not Auth.StaticToken) and
     ((ResponseErrorCode(Body) = 'invalid_token') or (ResponseErrorCode(Body) = 'authentication_required')) then
   begin
     RefreshCliAuthToken(Auth);
-    Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token, StatusCode);
+    Body := HttpPostJson(Auth.Url + '/sql', SqlPayload(TrimTrailingSemicolon(Sql)), Auth.Token,
+      Auth.InsecureTls, StatusCode);
   end;
 
   PrintSqlResponse(Body, OutputFormat, HumanReadableFloats);

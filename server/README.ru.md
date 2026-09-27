@@ -23,7 +23,10 @@ make build
 ./build/liquidstoolap health --url http://127.0.0.1:8321
 ./build/liquidstoolap token --url http://127.0.0.1:8321 --username admin --password-file ./secrets/admin.password
 ./build/liquidstoolap sql --url http://127.0.0.1:8321 --token "$TOKEN" --sql "SELECT :id" --param id=42
+./build/liquidstoolap health --url https://127.0.0.1:8443 --insecure
 ```
+
+Для CLI-команд по HTTPS с самоподписанным или недоверенным сертификатом используйте `--insecure` или его псевдоним `--allow-self-signed`.
 
 ## Проверяемое поведение сервера
 

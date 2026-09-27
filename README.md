@@ -154,9 +154,7 @@ Build Stoolap with C FFI support:
 
 ```bash
 mkdir -p vendor .cargo-home .cargo-target
-git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
-CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
-  cargo build --manifest-path vendor/stoolap/Cargo.toml --release --no-default-features --features ffi
+scripts/build-stoolap.sh
 ```
 
 Build the server:
@@ -483,9 +481,7 @@ docker rm -f liquidstoolap
 
 ```bash
 mkdir -p vendor .cargo-home .cargo-target
-git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
-CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
-  cargo build --manifest-path vendor/stoolap/Cargo.toml --release --no-default-features --features ffi
+scripts/build-stoolap.sh
 ```
 
 Соберите сервер:

@@ -13,11 +13,7 @@ jobs:
       - name: Install Free Pascal
         run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl
       - name: Build Stoolap FFI
-        run: |
-          git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
-          CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
-            cargo build --release --features ffi --no-default-features \
-            --manifest-path vendor/stoolap/Cargo.toml
+        run: scripts/build-stoolap.sh
       - name: Server unit tests
         run: make -C server test
       - name: Server smoke
@@ -30,11 +26,7 @@ jobs:
       - name: Install Free Pascal
         run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl
       - name: Build Stoolap FFI
-        run: |
-          git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
-          CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
-            cargo build --release --features ffi --no-default-features \
-            --manifest-path vendor/stoolap/Cargo.toml
+        run: scripts/build-stoolap.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

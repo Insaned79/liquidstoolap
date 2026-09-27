@@ -1,0 +1,1187 @@
+diff --git a/include/stoolap.h b/include/stoolap.h
+index 8286c8a..137bd50 100644
+--- a/include/stoolap.h
++++ b/include/stoolap.h
+@@ -246,6 +246,58 @@ int32_t stoolap_query_params(
+     StoolapRows** out_rows
+ );
+ 
++/**
++ * Execute a SQL statement with named parameters.
++ */
++int32_t stoolap_exec_named(
++    StoolapDB* db,
++    const char* sql,
++    const StoolapNamedParam* params,
++    int32_t params_len,
++    int64_t* rows_affected
++);
++
++/**
++ * Execute a query with named parameters.
++ * On success, *out_rows must be closed with stoolap_rows_close().
++ */
++int32_t stoolap_query_named(
++    StoolapDB* db,
++    const char* sql,
++    const StoolapNamedParam* params,
++    int32_t params_len,
++    StoolapRows** out_rows
++);
++
++/**
++ * Execute a SQL statement with named parameters and a backend timeout.
++ *
++ * timeout_ms is in milliseconds. Use 0 for no timeout.
++ */
++int32_t stoolap_exec_named_timeout(
++    StoolapDB* db,
++    const char* sql,
++    const StoolapNamedParam* params,
++    int32_t params_len,
++    uint64_t timeout_ms,
++    int64_t* rows_affected
++);
++
++/**
++ * Execute a query with named parameters and a backend timeout.
++ *
++ * timeout_ms is in milliseconds. Use 0 for no timeout.
++ * On success, *out_rows must be closed with stoolap_rows_close().
++ */
++int32_t stoolap_query_named_timeout(
++    StoolapDB* db,
++    const char* sql,
++    const StoolapNamedParam* params,
++    int32_t params_len,
++    uint64_t timeout_ms,
++    StoolapRows** out_rows
++);
++
+ /* =========================================================================
+  * Prepared statements
+  * ========================================================================= */
+diff --git a/src/api/database.rs b/src/api/database.rs
+index 4c276f0..09c8816 100644
+--- a/src/api/database.rs
++++ b/src/api/database.rs
+@@ -891,6 +891,48 @@ impl Database {
+         Ok(Rows::new(result))
+     }
+ 
++    /// Execute a statement with named parameters and a timeout.
++    ///
++    /// Timeout is specified in milliseconds. Use 0 for no timeout.
++    pub fn execute_named_with_timeout(
++        &self,
++        sql: &str,
++        params: NamedParams,
++        timeout_ms: u64,
++    ) -> Result<i64> {
++        let executor = self
++            .inner
++            .executor
++            .lock()
++            .map_err(|_| Error::LockAcquisitionFailed("executor".to_string()))?;
++
++        let mut ctx = ExecutionContext::with_named_params(params.into_inner());
++        ctx.set_timeout_ms(timeout_ms);
++        let result = executor.execute_with_context(sql, &ctx)?;
++        Ok(result.rows_affected())
++    }
++
++    /// Execute a query with named parameters and a timeout.
++    ///
++    /// Timeout is specified in milliseconds. Use 0 for no timeout.
++    pub fn query_named_with_timeout(
++        &self,
++        sql: &str,
++        params: NamedParams,
++        timeout_ms: u64,
++    ) -> Result<Rows> {
++        let executor = self
++            .inner
++            .executor
++            .lock()
++            .map_err(|_| Error::LockAcquisitionFailed("executor".to_string()))?;
++
++        let mut ctx = ExecutionContext::with_named_params(params.into_inner());
++        ctx.set_timeout_ms(timeout_ms);
++        let result = executor.execute_with_context(sql, &ctx)?;
++        Ok(Rows::new(result))
++    }
++
+     /// Execute a query with named parameters and return a single value
+     ///
+     /// # Examples
+diff --git a/src/ffi/database.rs b/src/ffi/database.rs
+index fbbfaa8..73be170 100644
+--- a/src/ffi/database.rs
++++ b/src/ffi/database.rs
+@@ -579,6 +579,139 @@ pub unsafe extern "C" fn stoolap_query_named(
+     })
+ }
+ 
++/// Execute a SQL statement with named parameters and a backend timeout.
++///
++/// Timeout is in milliseconds. Use 0 for no timeout.
++#[no_mangle]
++pub unsafe extern "C" fn stoolap_exec_named_timeout(
++    db: *mut StoolapDB,
++    sql: *const c_char,
++    params: *const StoolapNamedParam,
++    params_len: i32,
++    timeout_ms: u64,
++    rows_affected: *mut i64,
++) -> i32 {
++    let handle = match db.as_mut() {
++        Some(h) => h,
++        None => return STOOLAP_ERROR,
++    };
++    handle.last_error = None;
++
++    if sql.is_null() {
++        handle.set_error("SQL string is NULL");
++        return STOOLAP_ERROR;
++    }
++
++    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
++        let sql_str = match CStr::from_ptr(sql).to_str() {
++            Ok(s) => s,
++            Err(e) => {
++                handle.set_error(&format!("invalid UTF-8 in SQL: {}", e));
++                return STOOLAP_ERROR;
++            }
++        };
++
++        let named = value::named_params_from_ffi(params, params_len);
++
++        match handle
++            .db
++            .execute_named_with_timeout(sql_str, named, timeout_ms)
++        {
++            Ok(affected) => {
++                if !rows_affected.is_null() {
++                    *rows_affected = affected;
++                }
++                STOOLAP_OK
++            }
++            Err(e) => {
++                handle.set_error(&e.to_string());
++                STOOLAP_ERROR
++            }
++        }
++    }));
++
++    result.unwrap_or_else(|_| {
++        handle.set_error("panic during stoolap_exec_named_timeout");
++        STOOLAP_ERROR
++    })
++}
++
++/// Execute a query with named parameters and a backend timeout.
++///
++/// Timeout is in milliseconds. Use 0 for no timeout.
++#[no_mangle]
++pub unsafe extern "C" fn stoolap_query_named_timeout(
++    db: *mut StoolapDB,
++    sql: *const c_char,
++    params: *const StoolapNamedParam,
++    params_len: i32,
++    timeout_ms: u64,
++    out_rows: *mut *mut StoolapRows,
++) -> i32 {
++    if out_rows.is_null() {
++        return STOOLAP_ERROR;
++    }
++    *out_rows = std::ptr::null_mut();
++
++    let handle = match db.as_mut() {
++        Some(h) => h,
++        None => return STOOLAP_ERROR,
++    };
++    handle.last_error = None;
++
++    if sql.is_null() {
++        handle.set_error("SQL string is NULL");
++        return STOOLAP_ERROR;
++    }
++
++    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
++        let sql_str = match CStr::from_ptr(sql).to_str() {
++            Ok(s) => s,
++            Err(e) => {
++                handle.set_error(&format!("invalid UTF-8 in SQL: {}", e));
++                return STOOLAP_ERROR;
++            }
++        };
++
++        let named = value::named_params_from_ffi(params, params_len);
++
++        match handle
++            .db
++            .query_named_with_timeout(sql_str, named, timeout_ms)
++        {
++            Ok(rows) => {
++                let column_names: Vec<CString> = rows
++                    .columns()
++                    .iter()
++                    .map(|name| CString::new(name.as_str()).unwrap_or_default())
++                    .collect();
++                let affected = rows.rows_affected();
++
++                let rows_handle = Box::new(StoolapRows {
++                    rows: Some(rows),
++                    has_row: false,
++                    last_error: None,
++                    column_names: Arc::new(column_names),
++                    text_cache: Vec::new(),
++                    text_cache_dirty: false,
++                    rows_affected: affected,
++                });
++                *out_rows = Box::into_raw(rows_handle);
++                STOOLAP_OK
++            }
++            Err(e) => {
++                handle.set_error(&e.to_string());
++                STOOLAP_ERROR
++            }
++        }
++    }));
++
++    result.unwrap_or_else(|_| {
++        handle.set_error("panic during stoolap_query_named_timeout");
++        STOOLAP_ERROR
++    })
++}
++
+ /// Free a string allocated by the library.
+ ///
+ /// Safe to call with NULL (no-op).
+diff --git a/src/storage/mvcc/engine.rs b/src/storage/mvcc/engine.rs
+index 4f55041..3a8d852 100644
+--- a/src/storage/mvcc/engine.rs
++++ b/src/storage/mvcc/engine.rs
+@@ -603,13 +603,13 @@ impl MVCCEngine {
+                     // New path: load manifests + volumes BEFORE WAL replay.
+                     // Volumes must be loaded so is_row_id_in_volume() can check
+                     // row_ids for idempotent INSERT during replay.
+-                    let lsn = self.load_manifests_from_volumes();
+-                    self.load_standalone_volumes_no_schema_check();
++                    let lsn = self.load_manifests_from_volumes()?;
++                    self.load_standalone_volumes_no_schema_check()?;
+                     lsn
+                 } else if has_legacy_snapshots {
+                     // Legacy path: load snapshots (creates schemas + version stores)
+                     let snapshot_lsn = self.load_snapshots()?;
+-                    self.load_standalone_volumes();
++                    self.load_standalone_volumes()?;
+                     snapshot_lsn
+                 } else {
+                     0
+@@ -621,6 +621,12 @@ impl MVCCEngine {
+                 // Replay WAL entries after the checkpoint/snapshot LSN
+                 self.replay_wal(replay_from_lsn)?;
+ 
++                // A manifest volume may legitimately disappear when a later WAL
++                // record drops or truncates its table. Validate only after replay,
++                // when those destructive operations have been applied. Any segment
++                // still referenced by a live manifest must have loaded successfully.
++                self.validate_loaded_manifest_volumes()?;
++
+                 // Populate pre-computed default_value from default_expr for schema evolution.
+                 // Neither snapshots nor WAL persist the cached default_value, so old rows
+                 // read via normalize_row_to_schema would get NULL instead of the column default.
+@@ -1575,6 +1581,12 @@ impl MVCCEngine {
+                     }
+                     mgrs.remove(&table_name);
+                 }
++                if let Some(ref pm) = *self.persistence {
++                    if pm.is_enabled() {
++                        let vol_dir = pm.path().join("volumes");
++                        crate::storage::volume::io::delete_table_storage(&vol_dir, &table_name)?;
++                    }
++                }
+             }
+             WALOperationType::CreateIndex => {
+                 // Deserialize index metadata
+@@ -1754,6 +1766,7 @@ impl MVCCEngine {
+                     let mgrs = self.segment_managers.read().unwrap();
+                     if let Some(mgr) = mgrs.get(&table_name) {
+                         mgr.clear();
++                        mgr.persist_manifest_only()?;
+                     }
+                 }
+                 // Delete standalone volume files from disk
+@@ -2701,7 +2714,7 @@ impl MVCCEngine {
+         if let Some(ref pm) = *self.persistence {
+             if pm.is_enabled() {
+                 let vol_dir = pm.path().join("volumes");
+-                let _ = crate::storage::volume::io::delete_all_volumes(&vol_dir, &table_name);
++                crate::storage::volume::io::delete_table_storage(&vol_dir, &table_name)?;
+             }
+         }
+ 
+@@ -3011,26 +3024,31 @@ impl MVCCEngine {
+     /// Returns the minimum checkpoint_lsn across all loaded manifests (0 if none found).
+     /// Actual .vol files are loaded later by `load_standalone_volumes()` after WAL replay
+     /// creates the required schemas and version stores.
+-    fn load_manifests_from_volumes(&self) -> u64 {
++    fn load_manifests_from_volumes(&self) -> Result<u64> {
+         let pm = match self.persistence.as_ref() {
+             Some(pm) if pm.is_enabled() => pm,
+-            _ => return 0,
++            _ => return Ok(0),
+         };
+ 
+         let vol_dir = pm.path().join("volumes");
+         if !vol_dir.exists() {
+-            return 0;
++            return Ok(0);
+         }
+ 
+-        let entries = match std::fs::read_dir(&vol_dir) {
+-            Ok(e) => e,
+-            Err(_) => return 0,
+-        };
++        let entries = std::fs::read_dir(&vol_dir).map_err(|e| {
++            Error::internal(format!(
++                "failed to read volume directory {:?}: {}",
++                vol_dir, e
++            ))
++        })?;
+ 
+         let mut min_checkpoint_lsn: u64 = u64::MAX;
+         let mut any_loaded = false;
+ 
+-        for entry in entries.flatten() {
++        for entry in entries {
++            let entry = entry.map_err(|e| {
++                Error::internal(format!("failed to read entry in {:?}: {}", vol_dir, e))
++            })?;
+             if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                 continue;
+             }
+@@ -3055,10 +3073,15 @@ impl MVCCEngine {
+                     mgrs.insert(table_name, Arc::new(mgr));
+                 }
+                 Ok(None) => {
+-                    // No manifest.bin in this directory, skip
++                    // Files without a manifest are unpublished checkpoint/compaction
++                    // outputs. The WAL still covers them because manifest persistence
++                    // precedes WAL truncation. They are ignored as orphans.
+                 }
+                 Err(e) => {
+-                    eprintln!("Warning: Failed to load manifest for {}: {}", table_name, e);
++                    return Err(Error::internal(format!(
++                        "storage integrity error: failed to load manifest for '{}': {}",
++                        table_name, e
++                    )));
+                 }
+             }
+         }
+@@ -3068,13 +3091,13 @@ impl MVCCEngine {
+             // to ensure full WAL replay
+             let checkpoint_path = pm.path().join("wal").join("checkpoint.meta");
+             let _ = std::fs::remove_file(checkpoint_path);
+-            return 0;
++            return Ok(0);
+         }
+ 
+         if min_checkpoint_lsn == u64::MAX {
+-            0
++            Ok(0)
+         } else {
+-            min_checkpoint_lsn
++            Ok(min_checkpoint_lsn)
+         }
+     }
+ 
+@@ -3082,20 +3105,25 @@ impl MVCCEngine {
+     ///
+     /// These are created by seal_hot_buffers and compact_volumes during runtime.
+     /// They supplement the snapshot-adjacent .vol files loaded during load_snapshots.
+-    fn load_standalone_volumes(&self) {
++    fn load_standalone_volumes(&self) -> Result<()> {
+         let pm = match self.persistence.as_ref() {
+             Some(pm) if pm.is_enabled() => pm,
+-            _ => return,
++            _ => return Ok(()),
+         };
+ 
+         let vol_dir = pm.path().join("volumes");
+         if !vol_dir.exists() {
+-            return;
++            return Ok(());
+         }
+ 
+         let entries = match std::fs::read_dir(&vol_dir) {
+             Ok(e) => e,
+-            Err(_) => return,
++            Err(e) => {
++                return Err(Error::internal(format!(
++                    "failed to read volume directory {:?}: {}",
++                    vol_dir, e
++                )))
++            }
+         };
+ 
+         for entry in entries.flatten() {
+@@ -3113,10 +3141,6 @@ impl MVCCEngine {
+             }
+ 
+             let paths = crate::storage::volume::io::list_volumes(&vol_dir, &table_name);
+-            if paths.is_empty() {
+-                continue;
+-            }
+-
+             let mut standalone: Vec<(u64, Arc<crate::storage::volume::writer::FrozenVolume>)> =
+                 Vec::new();
+ 
+@@ -3144,7 +3168,7 @@ impl MVCCEngine {
+                     }
+                     Err(e) => {
+                         eprintln!(
+-                            "Warning: Failed to read volume {:?}: {}. Skipping file.",
++                            "Storage integrity warning: failed to read volume {:?}: {}",
+                             path, e
+                         );
+                         continue;
+@@ -3155,10 +3179,6 @@ impl MVCCEngine {
+                 standalone.push((stable_id, volume));
+             }
+ 
+-            if standalone.is_empty() {
+-                continue;
+-            }
+-
+             // Load volumes that are listed in the manifest. Orphan files
+             // (not in manifest) are cleaned up.
+             let mgr = self.get_or_create_segment_manager(&table_name);
+@@ -3177,6 +3197,7 @@ impl MVCCEngine {
+             // Recompute visibility bitmaps after all volumes for this table are loaded.
+             mgr.recompute_visibility();
+         }
++        Ok(())
+     }
+ 
+     /// Load standalone volumes without requiring schemas to exist.
+@@ -3184,20 +3205,25 @@ impl MVCCEngine {
+     /// Used during the new volume-only recovery path where volumes are loaded
+     /// BEFORE WAL replay (which creates schemas). Volumes carry their own schema
+     /// in the file format, so no external schema lookup is needed.
+-    fn load_standalone_volumes_no_schema_check(&self) {
++    fn load_standalone_volumes_no_schema_check(&self) -> Result<()> {
+         let pm = match self.persistence.as_ref() {
+             Some(pm) if pm.is_enabled() => pm,
+-            _ => return,
++            _ => return Ok(()),
+         };
+ 
+         let vol_dir = pm.path().join("volumes");
+         if !vol_dir.exists() {
+-            return;
++            return Ok(());
+         }
+ 
+         let entries = match std::fs::read_dir(&vol_dir) {
+             Ok(e) => e,
+-            Err(_) => return,
++            Err(e) => {
++                return Err(Error::internal(format!(
++                    "failed to read volume directory {:?}: {}",
++                    vol_dir, e
++                )))
++            }
+         };
+ 
+         for entry in entries.flatten() {
+@@ -3208,10 +3234,6 @@ impl MVCCEngine {
+             let table_name = entry.file_name().to_string_lossy().to_lowercase();
+ 
+             let paths = crate::storage::volume::io::list_volumes(&vol_dir, &table_name);
+-            if paths.is_empty() {
+-                continue;
+-            }
+-
+             let mgr = self.get_or_create_segment_manager(&table_name);
+             for path in paths {
+                 let volume_id = parse_volume_id(&path);
+@@ -3250,7 +3272,7 @@ impl MVCCEngine {
+                     }
+                     Err(e) => {
+                         eprintln!(
+-                            "Warning: Failed to read volume {:?}: {}. Skipping file.",
++                            "Storage integrity warning: failed to read volume {:?}: {}",
+                             path, e
+                         );
+                         continue;
+@@ -3261,6 +3283,35 @@ impl MVCCEngine {
+             // Recompute visibility bitmaps after all volumes for this table are loaded.
+             mgr.recompute_visibility();
+         }
++        Ok(())
++    }
++
++    /// Ensure recovery did not silently omit any live manifest segment.
++    /// Called after WAL replay so a later DROP/TRUNCATE can legitimately remove
++    /// references to files that were absent or unreadable during initial loading.
++    fn validate_loaded_manifest_volumes(&self) -> Result<()> {
++        let mgrs = self.segment_managers.read().unwrap();
++        for (table_name, mgr) in mgrs.iter() {
++            let manifest_ids: Vec<u64> = {
++                let manifest = mgr.manifest();
++                manifest
++                    .segments
++                    .iter()
++                    .map(|segment| segment.segment_id)
++                    .collect()
++            };
++            let missing: Vec<u64> = manifest_ids
++                .into_iter()
++                .filter(|segment_id| !mgr.has_segment(*segment_id))
++                .collect();
++            if !missing.is_empty() {
++                return Err(Error::internal(format!(
++                    "storage integrity error: table '{}' is missing or has corrupt manifest volumes {:?}",
++                    table_name, missing
++                )));
++            }
++        }
++        Ok(())
+     }
+ 
+     /// Sync auto-increment counters from segment data.
+@@ -5211,6 +5262,12 @@ impl MVCCEngine {
+     }
+ 
+     fn compact_volumes(&self) -> Result<()> {
++        // Bound the amount of cold data promoted into memory by one compaction.
++        // A damaged or stalled installation may have accumulated thousands of
++        // sub-target volumes; compacting all of them in one pass can exhaust RAM
++        // before the database has a chance to make progress.
++        const MAX_COMPACTION_INPUT_VOLUMES: usize = 16;
++
+         let pm = match self.persistence.as_ref() {
+             Some(pm) if pm.is_enabled() => pm,
+             _ => return Ok(()),
+@@ -5342,6 +5399,10 @@ impl MVCCEngine {
+                     // At-target with no tombstones: frozen, don't touch
+                 }
+ 
++                if merge_indices.len() > MAX_COMPACTION_INPUT_VOLUMES {
++                    merge_indices.truncate(MAX_COMPACTION_INPUT_VOLUMES);
++                }
++
+                 if merge_indices.is_empty() {
+                     continue;
+                 }
+@@ -6338,6 +6399,10 @@ impl Engine for MVCCEngine {
+             let mgrs = self.segment_managers.read().unwrap();
+             if let Some(mgr) = mgrs.get(&table_lower) {
+                 mgr.clear();
++                // Publish an empty manifest before deleting old volumes. If a
++                // later checkpoint truncates the TRUNCATE WAL record, recovery
++                // must never see stale segment references.
++                mgr.persist_manifest_only()?;
+             }
+         }
+ 
+diff --git a/src/storage/volume/io.rs b/src/storage/volume/io.rs
+index 0d5057b..53c98da 100644
+--- a/src/storage/volume/io.rs
++++ b/src/storage/volume/io.rs
+@@ -18,6 +18,7 @@
+ //! Volumes are written atomically (write to .tmp, then rename) to prevent
+ //! corruption from crashes during writes.
+ 
++use std::io::{Read, Seek, SeekFrom};
+ use std::path::{Path, PathBuf};
+ use std::sync::Arc;
+ 
+@@ -39,6 +40,45 @@ const V4_VERSION: u32 = 1;
+ /// Volume catalog filename
+ const CATALOG_FILE: &str = "volumes.catalog";
+ 
++/// Verify the trailing V4 checksum without allocating based on file contents.
++/// This deliberately runs before header/metadata parsing so a corrupt size field
++/// cannot cause an excessive allocation or an LZ4 decoder failure first.
++fn verify_v4_crc(path: &Path) -> Result<()> {
++    let mut file = std::fs::File::open(path)
++        .map_err(|e| crate::core::Error::internal(format!("V4 open {:?}: {}", path, e)))?;
++    let file_len = file
++        .metadata()
++        .map_err(|e| crate::core::Error::internal(format!("V4 stat {:?}: {}", path, e)))?
++        .len();
++    if file_len < 24 {
++        return Err(crate::core::Error::internal("V4: file too small"));
++    }
++
++    file.seek(SeekFrom::End(-4))
++        .map_err(|e| crate::core::Error::internal(format!("V4 checksum seek: {}", e)))?;
++    let mut crc_bytes = [0u8; 4];
++    file.read_exact(&mut crc_bytes)
++        .map_err(|e| crate::core::Error::internal(format!("V4 checksum read: {}", e)))?;
++    let stored_crc = u32::from_le_bytes(crc_bytes);
++
++    file.seek(SeekFrom::Start(0))
++        .map_err(|e| crate::core::Error::internal(format!("V4 checksum rewind: {}", e)))?;
++    let mut remaining = file_len - 4;
++    let mut hasher = crc32fast::Hasher::new();
++    let mut buffer = [0u8; 64 * 1024];
++    while remaining > 0 {
++        let to_read = remaining.min(buffer.len() as u64) as usize;
++        file.read_exact(&mut buffer[..to_read])
++            .map_err(|e| crate::core::Error::internal(format!("V4 checksum read: {}", e)))?;
++        hasher.update(&buffer[..to_read]);
++        remaining -= to_read as u64;
++    }
++    if hasher.finalize() != stored_crc {
++        return Err(crate::core::Error::internal("V4: CRC mismatch"));
++    }
++    Ok(())
++}
++
+ /// Write a frozen volume to disk atomically (V4 format, LZ4 compressed).
+ pub fn write_volume_to_disk(
+     dir: &Path,
+@@ -89,6 +129,16 @@ pub fn write_volume_to_disk_opts(
+     }
+     drop(data);
+ 
++    // Never publish a volume that cannot be read back from stable storage.
++    // The manifest is updated only after this function succeeds.
++    if let Err(e) = verify_v4_crc(&tmp_path) {
++        let _ = std::fs::remove_file(&tmp_path);
++        return Err(crate::core::Error::internal(format!(
++            "failed to verify volume tmp file: {}",
++            e
++        )));
++    }
++
+     std::fs::rename(&tmp_path, &final_path).map_err(|e| {
+         crate::core::Error::internal(format!("failed to rename volume file: {}", e))
+     })?;
+@@ -197,10 +247,10 @@ fn serialize_v4_opts(
+ /// Blocks are read one at a time into a reusable buffer and decompressed
+ /// directly into final column vectors. No intermediate compressed storage.
+ fn read_volume_v4(path: &Path) -> Result<FrozenVolume> {
+-    use std::io::Read;
+-
+     let inv = |msg: &str| crate::core::Error::internal(format!("V4: {}", msg));
+ 
++    verify_v4_crc(path)?;
++
+     let file = std::fs::File::open(path)
+         .map_err(|e| crate::core::Error::internal(format!("V4 open {:?}: {}", path, e)))?;
+     let file_len = file
+@@ -238,6 +288,9 @@ fn read_volume_v4(path: &Path) -> Result<FrozenVolume> {
+     let col_count = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
+     let num_groups = u32::from_le_bytes(header[12..16].try_into().unwrap()) as usize;
+     let meta_len = u32::from_le_bytes(header[16..20].try_into().unwrap()) as usize;
++    if meta_len > file_len - 24 {
++        return Err(inv("metadata length exceeds file size"));
++    }
+ 
+     // 2. Compressed metadata (read into temp buffer, decompress, drop)
+     let mut meta_compressed = vec![0u8; meta_len];
+@@ -269,8 +322,19 @@ fn read_volume_v4(path: &Path) -> Result<FrozenVolume> {
+     }
+ 
+     // 3. Block index: (compressed_len: u64, decompressed_len: u64) pairs
+-    let total_blocks = col_count * num_groups;
+-    let mut index_buf = vec![0u8; total_blocks * 16];
++    let total_blocks = col_count
++        .checked_mul(num_groups)
++        .ok_or_else(|| inv("block count overflow"))?;
++    let index_len = total_blocks
++        .checked_mul(16)
++        .ok_or_else(|| inv("block index size overflow"))?;
++    let bytes_before_index = 20usize
++        .checked_add(meta_len)
++        .ok_or_else(|| inv("metadata offset overflow"))?;
++    if index_len > file_len.saturating_sub(bytes_before_index + 4) {
++        return Err(inv("block index exceeds file size"));
++    }
++    let mut index_buf = vec![0u8; index_len];
+     crc_read!(&mut index_buf);
+ 
+     let mut compressed_lens = Vec::with_capacity(total_blocks);
+@@ -284,6 +348,20 @@ fn read_volume_v4(path: &Path) -> Result<FrozenVolume> {
+     }
+     drop(index_buf);
+ 
++    let block_bytes = compressed_lens.iter().try_fold(0usize, |total, &len| {
++        total
++            .checked_add(len)
++            .ok_or_else(|| inv("block data size overflow"))
++    })?;
++    let expected_file_len = bytes_before_index
++        .checked_add(index_len)
++        .and_then(|len| len.checked_add(block_bytes))
++        .and_then(|len| len.checked_add(4))
++        .ok_or_else(|| inv("file layout size overflow"))?;
++    if expected_file_len != file_len {
++        return Err(inv("block lengths do not match file size"));
++    }
++
+     let col_data_types = meta.column_types.clone();
+     let group_size = ROW_GROUP_SIZE;
+ 
+@@ -447,6 +525,29 @@ pub fn delete_all_volumes(dir: &Path, table_name: &str) -> Result<()> {
+     Ok(())
+ }
+ 
++/// Delete all persisted state for a dropped table, including its manifest.
++/// The caller must durably record DROP TABLE in the WAL before invoking this.
++pub fn delete_table_storage(dir: &Path, table_name: &str) -> Result<()> {
++    let table_dir = dir.join(table_name);
++    match std::fs::remove_dir_all(&table_dir) {
++        Ok(()) => {}
++        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
++        Err(e) => {
++            return Err(crate::core::Error::internal(format!(
++                "failed to delete table storage {:?}: {}",
++                table_dir, e
++            )))
++        }
++    }
++    #[cfg(not(windows))]
++    if let Ok(parent) = std::fs::File::open(dir) {
++        parent.sync_all().map_err(|e| {
++            crate::core::Error::internal(format!("failed to fsync volume directory: {}", e))
++        })?;
++    }
++    Ok(())
++}
++
+ /// Generate a new volume ID. Monotonically increasing, unique across calls.
+ /// Uses microseconds since epoch + CAS loop for uniqueness.
+ pub fn next_volume_id() -> u64 {
+diff --git a/tests/durability_test.rs b/tests/durability_test.rs
+index 1f81679..cc5c9fe 100644
+--- a/tests/durability_test.rs
++++ b/tests/durability_test.rs
+@@ -327,6 +327,19 @@ fn verify_recovery_at_least(fixture: &TestFixture, table: &str, min_rows: i64) {
+     }
+ }
+ 
++/// A manifest is a commitment to a complete immutable volume set. Recovery
++/// must reject a database when any committed file is missing or corrupt rather
++/// than silently opening with partial query results.
++fn verify_storage_integrity_rejected(dsn: &str) {
++    let error = Database::open(dsn)
++        .err()
++        .expect("corrupt committed storage must reject recovery");
++    assert!(
++        error.to_string().contains("storage integrity error"),
++        "unexpected recovery error: {error}"
++    );
++}
++
+ /// Open the database after corruption and verify exact row count.
+ /// Also verifies the database is usable.
+ fn verify_recovery_exact(fixture: &TestFixture, table: &str, exact_rows: i64) {
+@@ -2604,8 +2617,8 @@ fn setup_db_with_volumes() -> (TestFixture, i64) {
+ 
+ #[test]
+ fn test_volume_corrupt_with_valid_wal() {
+-    // Corrupt .vol file magic bytes. Recovery should skip the corrupt volume
+-    // and recover what it can from WAL.
++    // Corrupt .vol file magic bytes. WAL cannot prove that it still contains
++    // every row committed to the manifest, so recovery must fail closed.
+     let (fixture, _) = setup_db_with_volumes();
+ 
+     let vol_files = find_volume_files(&fixture.db_path, "vol_test");
+@@ -2620,34 +2633,13 @@ fn test_volume_corrupt_with_valid_wal() {
+ 
+     remove_lock_file(&fixture.db_path);
+ 
+-    let db = Database::open(&fixture.dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM vol_test", ());
+-
+-    match result {
+-        Ok(count) => {
+-            // Volume data may be lost but WAL data (phase 2) should survive
+-            assert!(
+-                count >= 0,
+-                "Should have non-negative row count, got {}",
+-                count
+-            );
+-            // DB should be usable
+-            db.execute(
+-                "INSERT INTO vol_test (id, value, phase) VALUES (999, 'post_recovery', 3)",
+-                (),
+-            )
+-            .unwrap();
+-        }
+-        Err(_) => {
+-            // If DDL was also lost (in truncated WAL), table may not exist
+-        }
+-    }
++    verify_storage_integrity_rejected(&fixture.dsn);
+ }
+ 
+ #[test]
+ fn test_volume_deleted_with_valid_wal() {
+     // Delete all .vol files but keep manifest and WAL.
+-    // Recovery should detect missing volumes and fall back to WAL replay.
++    // Recovery must reject a manifest whose committed volume is missing.
+     let (fixture, _) = setup_db_with_volumes();
+ 
+     let vol_files = find_volume_files(&fixture.db_path, "vol_test");
+@@ -2661,22 +2653,7 @@ fn test_volume_deleted_with_valid_wal() {
+ 
+     remove_lock_file(&fixture.db_path);
+ 
+-    let db = Database::open(&fixture.dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM vol_test", ());
+-
+-    match result {
+-        Ok(count) => {
+-            // Post-checkpoint WAL data should survive at minimum
+-            assert!(
+-                count >= 0,
+-                "Should have non-negative row count, got {}",
+-                count
+-            );
+-        }
+-        Err(_) => {
+-            // If both volume and WAL can't reconstruct the table, acceptable
+-        }
+-    }
++    verify_storage_integrity_rejected(&fixture.dsn);
+ }
+ 
+ #[test]
+@@ -2723,7 +2700,7 @@ fn test_volume_valid_wal_corrupt() {
+ #[test]
+ fn test_manifest_corrupt_with_valid_volumes() {
+     // Corrupt manifest.bin but leave .vol files intact.
+-    // Recovery may lose track of which volumes exist.
++    // Recovery must not guess which volumes form the committed table state.
+     let (fixture, _) = setup_db_with_volumes();
+ 
+     if let Some(manifest_path) = find_manifest_file(&fixture.db_path, "vol_test") {
+@@ -2737,23 +2714,7 @@ fn test_manifest_corrupt_with_valid_volumes() {
+ 
+     remove_lock_file(&fixture.db_path);
+ 
+-    // Database should still open; volumes without valid manifest may be skipped
+-    let db = Database::open(&fixture.dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM vol_test", ());
+-
+-    match result {
+-        Ok(count) => {
+-            assert!(count >= 0, "Should have non-negative row count");
+-            db.execute(
+-                "INSERT INTO vol_test (id, value, phase) VALUES (999, 'post_recovery', 3)",
+-                (),
+-            )
+-            .unwrap();
+-        }
+-        Err(_) => {
+-            // Table may not exist if manifest + WAL both can't reconstruct it
+-        }
+-    }
++    verify_storage_integrity_rejected(&fixture.dsn);
+ }
+ 
+ #[test]
+@@ -2796,17 +2757,7 @@ fn test_volume_truncated() {
+ 
+     remove_lock_file(&fixture.db_path);
+ 
+-    let db = Database::open(&fixture.dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM vol_test", ());
+-
+-    match result {
+-        Ok(count) => {
+-            assert!(count >= 0);
+-        }
+-        Err(_) => {
+-            // Acceptable if truncated volume causes load failure
+-        }
+-    }
++    verify_storage_integrity_rejected(&fixture.dsn);
+ }
+ 
+ // ============================================================================
+@@ -3003,20 +2954,9 @@ fn test_checkpoint_volume_corrupt_wal_truncated() {
+         }
+     }
+ 
+-    // Reopen — volume data (phase 1) may be lost since WAL was truncated,
+-    // but WAL data (phase 2) should survive. Table DDL re-recorded after
+-    // checkpoint ensures table exists.
+-    let db = Database::open(&dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM safe_test3", ());
+-    match result {
+-        Ok(count) => {
+-            // WAL data should survive; volume data depends on WAL truncation extent
+-            assert!(count >= 0, "Should have non-negative count, got {}", count);
+-        }
+-        Err(_) => {
+-            // If DDL was also in truncated WAL region, table may not exist
+-        }
+-    }
++    // The WAL was truncated after the volume became authoritative. Opening
++    // without it would expose partial data, so recovery must fail closed.
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ #[test]
+@@ -3321,25 +3261,9 @@ fn test_checkpoint_multi_table_one_volume_corrupt() {
+         }
+     }
+ 
+-    // Reopen — table B should be fully intact from volumes + WAL
+-    let db = Database::open(&dsn).unwrap();
+-    let count_b: i64 = db.query_one("SELECT COUNT(*) FROM multi_b", ()).unwrap();
+-    assert_eq!(count_b, 30, "Table B: all 30 rows from volumes + WAL");
+-
+-    // Table A: volume data may be lost (WAL was truncated), but WAL data (phase 3) should survive
+-    let result_a: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM multi_a", ());
+-    match result_a {
+-        Ok(count) => {
+-            assert!(
+-                count >= 0,
+-                "Table A should have non-negative count, got {}",
+-                count
+-            );
+-        }
+-        Err(_) => {
+-            // If DDL was in truncated WAL region, table may not exist
+-        }
+-    }
++    // A database-level connection cannot claim consistency while one live
++    // table is incomplete, even when other tables remain readable on disk.
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ #[test]
+@@ -3601,28 +3525,8 @@ fn test_checkpoint_all_volumes_corrupt_one_table() {
+         }
+     }
+ 
+-    // Reopen — healthy recovers from volumes + WAL.
+-    // Doomed's volumes are corrupt and WAL was truncated, so data sealed
+-    // before checkpoint may be lost. This is expected: volume corruption
+-    // after WAL truncation means data loss for that table.
+-    let db = Database::open(&dsn).unwrap();
+-    let healthy_count: i64 = db.query_one("SELECT COUNT(*) FROM healthy", ()).unwrap();
+-    assert_eq!(
+-        healthy_count, 30,
+-        "Healthy table should have all 30 rows from volumes + WAL"
+-    );
+-
+-    // Doomed table: volumes are corrupt, WAL was truncated.
+-    // The table may not exist or may have partial data.
+-    let doomed_result: std::result::Result<i64, _> =
+-        db.query_one("SELECT COUNT(*) FROM doomed", ());
+-    if let Ok(count) = doomed_result {
+-        assert!(
+-            count <= 30,
+-            "Doomed should have at most 30 rows (got {})",
+-            count
+-        );
+-    }
++    // Do not silently serve a partially recovered database.
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ #[test]
+@@ -4028,22 +3932,7 @@ fn test_manifest_corrupt_magic_bytes() {
+         }
+     }
+ 
+-    // Reopen — manifest is corrupt, volumes may not load, but WAL data should survive
+-    let db = Database::open(&dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM meta_test", ());
+-    match result {
+-        Ok(count) => {
+-            assert!(count >= 0, "Should have non-negative count, got {}", count);
+-            db.execute(
+-                "INSERT INTO meta_test (id, value) VALUES (100, 'post_recovery')",
+-                (),
+-            )
+-            .unwrap();
+-        }
+-        Err(_) => {
+-            // If DDL was in truncated WAL, table may not exist
+-        }
+-    }
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ #[test]
+@@ -4086,12 +3975,7 @@ fn test_manifest_corrupt_checkpoint_lsn() {
+         }
+     }
+ 
+-    // Database should open without crashing
+-    let db = Database::open(&dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM meta_lsn", ());
+-    if let Ok(count) = result {
+-        assert!(count >= 0, "Should have non-negative count");
+-    }
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ #[test]
+@@ -4176,12 +4060,7 @@ fn test_manifest_truncated() {
+         }
+     }
+ 
+-    // Database should open without crashing
+-    let db = Database::open(&dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM meta_trunc", ());
+-    if let Ok(count) = result {
+-        assert!(count >= 0, "Should have non-negative count");
+-    }
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -4358,17 +4237,7 @@ fn test_crash_partial_volume_file() {
+         }
+     }
+ 
+-    let db = Database::open(&dsn).unwrap();
+-    let result: Result<i64, _> = db.query_one("SELECT COUNT(*) FROM partial_vol", ());
+-    match result {
+-        Ok(count) => {
+-            // Truncated volume may fail to load; WAL data should survive
+-            assert!(count >= 0, "Should have non-negative count");
+-        }
+-        Err(_) => {
+-            // If volume load failure cascades, table may not exist
+-        }
+-    }
++    verify_storage_integrity_rejected(&dsn);
+ }
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/tests/volume_checkpoint_test.rs b/tests/volume_checkpoint_test.rs
+index 5f2c966..d3b6602 100644
+--- a/tests/volume_checkpoint_test.rs
++++ b/tests/volume_checkpoint_test.rs
+@@ -707,7 +707,7 @@ fn test_snapshot_transaction_blocks_compaction() {
+ }
+ 
+ #[test]
+-fn test_compaction_skips_table_when_manifest_segment_is_not_loaded() {
++fn test_open_fails_when_manifest_segment_is_missing() {
+     let dir = tempfile::tempdir().unwrap();
+     let db_path = dir.path().join("skip_incomplete_compaction");
+     let setup_dsn = format!(
+@@ -751,13 +751,17 @@ fn test_compaction_skips_table_when_manifest_segment_is_not_loaded() {
+ 
+     fs::remove_file(&volume_files[0]).unwrap();
+ 
+-    let compact_dsn = format!(
++    let reopen_dsn = format!(
+         "file://{}?compact_threshold=2&checkpoint_on_close=off",
+         db_path.display()
+     );
+-    let db = Database::open(&compact_dsn).unwrap();
+-    db.execute("PRAGMA CHECKPOINT", ()).unwrap();
+-    db.close().unwrap();
++    let error = Database::open(&reopen_dsn)
++        .err()
++        .expect("a manifest-listed missing volume must fail recovery");
++    assert!(
++        error.to_string().contains("storage integrity error"),
++        "unexpected recovery error: {error}"
++    );
+ 
+     let manifest_after = read_manifest(&db_path, "t");
+     let segment_ids_after: Vec<u64> = manifest_after
+@@ -769,12 +773,85 @@ fn test_compaction_skips_table_when_manifest_segment_is_not_loaded() {
+     assert_eq!(
+         manifest_after.segments.len(),
+         2,
+-        "compaction should not shrink the manifest when a selected segment failed to load"
++        "failed recovery must not mutate the manifest"
+     );
+     assert_eq!(
+         segment_ids_after, segment_ids_before,
+-        "compaction should leave the manifest unchanged when not all selected volumes are loaded"
++        "failed recovery must leave the manifest unchanged"
++    );
++}
++
++#[test]
++fn test_open_fails_when_manifest_volume_is_corrupt() {
++    let dir = tempfile::tempdir().unwrap();
++    let db_path = dir.path().join("reject_corrupt_volume");
++    let dsn = format!("file://{}?checkpoint_on_close=off", db_path.display());
++
++    {
++        let db = Database::open(&dsn).unwrap();
++        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)", ())
++            .unwrap();
++        db.execute("INSERT INTO t VALUES (1, 'preserve me')", ())
++            .unwrap();
++        db.execute("PRAGMA CHECKPOINT", ()).unwrap();
++        db.close().unwrap();
++    }
++
++    let volume = list_volume_files(&db_path, "t")
++        .into_iter()
++        .next()
++        .expect("checkpoint should create a volume");
++    let mut bytes = fs::read(&volume).unwrap();
++    let offset = bytes.len() / 2;
++    bytes[offset] ^= 0x5a;
++    fs::write(&volume, bytes).unwrap();
++
++    let error = Database::open(&dsn)
++        .err()
++        .expect("a corrupt manifest-listed volume must fail recovery");
++    let message = error.to_string();
++    assert!(
++        message.contains("storage integrity error") && message.contains("corrupt manifest volumes"),
++        "unexpected recovery error: {message}"
++    );
++}
++
++#[test]
++fn test_compaction_bounds_input_volume_count() {
++    let dir = tempfile::tempdir().unwrap();
++    let db_path = dir.path().join("bounded_compaction");
++    let setup_dsn = format!(
++        "file://{}?compact_threshold=100&checkpoint_on_close=off",
++        db_path.display()
++    );
++
++    {
++        let db = Database::open(&setup_dsn).unwrap();
++        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)", ())
++            .unwrap();
++        for id in 1..=40 {
++            db.execute(&format!("INSERT INTO t VALUES ({id}, 'payload_{id}')"), ())
++                .unwrap();
++            db.execute("PRAGMA CHECKPOINT", ()).unwrap();
++        }
++        db.close().unwrap();
++    }
++    assert_eq!(list_volume_files(&db_path, "t").len(), 40);
++
++    let compact_dsn = format!(
++        "file://{}?compact_threshold=2&checkpoint_on_close=off",
++        db_path.display()
+     );
++    let db = Database::open(&compact_dsn).unwrap();
++    db.execute("PRAGMA CHECKPOINT", ()).unwrap();
++    assert_eq!(
++        list_volume_files(&db_path, "t").len(),
++        25,
++        "one pass should replace at most 16 inputs with one bounded output"
++    );
++    let count: i64 = db.query_one("SELECT COUNT(*) FROM t", ()).unwrap();
++    assert_eq!(count, 40);
++    db.close().unwrap();
+ }
+ 
+ // ---------------------------------------------------------------------------

@@ -36,10 +36,7 @@ Liquid Stoolap - лёгкий REST-сервер для выполнения SQL 
 
 ```bash
 mkdir -p vendor .cargo-home .cargo-target
-git clone --depth 1 https://github.com/stoolap/stoolap.git vendor/stoolap
-CARGO_HOME="$PWD/.cargo-home" CARGO_TARGET_DIR="$PWD/.cargo-target" \
-  cargo build --release --features ffi --no-default-features \
-  --manifest-path vendor/stoolap/Cargo.toml
+scripts/build-stoolap.sh
 ```
 
 Результат: `.cargo-target/release/libstoolap.so`.
