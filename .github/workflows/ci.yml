@@ -18,7 +18,8 @@ jobs:
         run: make -C server test
       - name: Server smoke
         run: |
-          if ! make -C server smoke; then
+          make -C server build
+          if ! (cd server && bash -x tests/smoke.sh); then
             test ! -f server/build/smoke.log || cat server/build/smoke.log
             exit 1
           fi

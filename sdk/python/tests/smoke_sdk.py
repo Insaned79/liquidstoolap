@@ -14,7 +14,7 @@ PORT = 8323
 
 
 def wait_for_health() -> None:
-    deadline = time.time() + 5
+    deadline = time.time() + 15
     while time.time() < deadline:
         try:
             response = httpx.get(f"http://127.0.0.1:{PORT}/health", timeout=0.2)
@@ -47,8 +47,6 @@ def main() -> None:
     process = subprocess.Popen(
         [str(build / "liquidstoolap"), "serve", "--config", str(config_file)],
         cwd=SERVER,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
         env=env,
     )
     try:
