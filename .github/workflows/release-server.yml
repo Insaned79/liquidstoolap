@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Free Pascal
-        run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl
+        run: sudo apt-get update && sudo apt-get install -y fp-compiler fp-units-fcl fp-units-net
       - name: Build Stoolap FFI
         run: scripts/build-stoolap.sh
       - name: Build and smoke-test server
