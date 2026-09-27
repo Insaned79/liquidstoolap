@@ -18,11 +18,13 @@ jobs:
         run: make -C server test
       - name: Server smoke
         run: |
-          make -C server build
-          if ! (cd server && bash -x tests/smoke.sh); then
-            test ! -f server/build/smoke.log || cat server/build/smoke.log
+          if ! (make -C server build && cd server && bash -x tests/smoke.sh) >server-smoke-ci.log 2>&1; then
+            cat server-smoke-ci.log
+            summary="$(tail -n 30 server-smoke-ci.log | tr '\n' ' ' | cut -c1-4000)"
+            echo "::error title=Server smoke failed::$summary"
             exit 1
           fi
+          cat server-smoke-ci.log
 
   python-sdk:
     runs-on: ubuntu-latest
@@ -44,7 +46,14 @@ jobs:
       - name: SDK unit tests
         run: pytest -q sdk/python/tests/test_models.py sdk/python/tests/test_client_errors.py
       - name: SDK smoke
-        run: python sdk/python/tests/smoke_sdk.py
+        run: |
+          if ! python sdk/python/tests/smoke_sdk.py >sdk-smoke-ci.log 2>&1; then
+            cat sdk-smoke-ci.log
+            summary="$(tail -n 30 sdk-smoke-ci.log | tr '\n' ' ' | cut -c1-4000)"
+            echo "::error title=SDK smoke failed::$summary"
+            exit 1
+          fi
+          cat sdk-smoke-ci.log
       - name: SDK build artifacts
         run: python -m build sdk/python
 
